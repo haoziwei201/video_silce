@@ -6,6 +6,7 @@ import os
 import sys
 import json
 import logging
+import glob
 from pathlib import Path
 
 # 添加src目录到Python路径
@@ -126,46 +127,60 @@ def get_user_input():
     
     return video_filename, user_instruction
 
-# def save_transcript(transcript, video_name):
-#     """保存转录文本到文件"""
-#     transcript_path = os.path.join(TRANSCRIPTS_DIR, f"{video_name}_transcript.json")
-    
-#     # 确保转录是JSON可序列化的
-#     if isinstance(transcript, list):
-#         # 如果是单词列表，转换为标准格式
-#         serializable_transcript = []
-#         for item in transcript:
-#             if isinstance(item, dict):
-#                 serializable_transcript.append(item)
-#             else:
-#                 # 尝试转换为字典
-#                 serializable_transcript.append({"word": str(item)})
-#     else:
-#         serializable_transcript = str(transcript)
-    
-#     with open(transcript_path, 'w', encoding='utf-8') as f:
-#         json.dump(serializable_transcript, f, ensure_ascii=False, indent=2)
-    
-#     logger.info(f"转录文本已保存到: {transcript_path}")
-#     return transcript_path
+def save_transcript(transcript, video_name):
+    """保存转录文本到文件"""
+    try:
+        transcript_path = os.path.join(TRANSCRIPTS_DIR, f"{video_name}_transcript.json")
+        print(f"DEBUG: 准备保存转录结果到 {transcript_path}")
+        
+        # 确保转录是JSON可序列化的
+        if isinstance(transcript, list):
+            # 如果是单词列表，转换为标准格式
+            serializable_transcript = []
+            for item in transcript:
+                if isinstance(item, dict):
+                    serializable_transcript.append(item)
+                else:
+                    # 尝试转换为字典
+                    serializable_transcript.append({"word": str(item)})
+        else:
+            serializable_transcript = str(transcript)
+        
+        with open(transcript_path, 'w', encoding='utf-8') as f:
+            json.dump(serializable_transcript, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"转录文本已保存到: {transcript_path}")
+        print(f"DEBUG: 转录结果保存成功")
+        return transcript_path
+    except Exception as e:
+        logger.error(f"保存转录结果失败: {str(e)}")
+        print(f"DEBUG: 保存转录结果失败: {str(e)}")
+        return None
 
-# def save_analysis_results(segments, video_name, user_instruction):
-#     """保存分析结果到文件"""
-#     results = {
-#         "video_name": video_name,
-#         "user_instruction": user_instruction,
-#         "segments": segments,
-#         "total_segments": len(segments),
-#         "total_duration": sum(seg["end_time"] - seg["start_time"] for seg in segments if "start_time" in seg and "end_time" in seg)
-#     }
-    
-#     results_path = os.path.join(ANALYSIS_RESULTS_DIR, f"{video_name}_analysis.json")
-    
-#     with open(results_path, 'w', encoding='utf-8') as f:
-#         json.dump(results, f, ensure_ascii=False, indent=2)
-    
-#     logger.info(f"分析结果已保存到: {results_path}")
-#     return results_path
+def save_analysis_results(segments, video_name, user_instruction):
+    """保存分析结果到文件"""
+    try:
+        results = {
+            "video_name": video_name,
+            "user_instruction": user_instruction,
+            "segments": segments,
+            "total_segments": len(segments),
+            "total_duration": sum(seg["end_time"] - seg["start_time"] for seg in segments if "start_time" in seg and "end_time" in seg)
+        }
+        
+        results_path = os.path.join(ANALYSIS_RESULTS_DIR, f"{video_name}_analysis.json")
+        print(f"DEBUG: 准备保存分析结果到 {results_path}")
+        
+        with open(results_path, 'w', encoding='utf-8') as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"分析结果已保存到: {results_path}")
+        print(f"DEBUG: 分析结果保存成功")
+        return results_path
+    except Exception as e:
+        logger.error(f"保存分析结果失败: {str(e)}")
+        print(f"DEBUG: 保存分析结果失败: {str(e)}")
+        return None
 
 def main():
     """主函数"""
@@ -235,7 +250,7 @@ def main():
         print(f"✓ 语音转文字完成，共识别 {len(transcript)} 个片段")
         
         # 保存转录结果
-        # transcript_path = save_transcript(transcript, video_name)
+        transcript_path = save_transcript(transcript, video_name)
         
         # 6. 文本分析
         logger.info("步骤6: 文本分析")
@@ -262,8 +277,21 @@ def main():
         print(f"✓ 文本分析完成，找到 {len(segments)} 个剪辑片段")
         
         # 保存分析结果
-        # results_path = save_analysis_results(segments, video_name, user_instruction)
+        # 确保分析结果目录存在
+        if not os.path.exists(ANALYSIS_RESULTS_DIR):
+            os.makedirs(ANALYSIS_RESULTS_DIR)
+            logger.info(f"创建分析结果目录: {ANALYSIS_RESULTS_DIR}")
         
+        # 保存分析结果
+        try:
+            results_path = save_analysis_results(segments, video_name, user_instruction)
+            logger.info(f"分析结果保存成功: {results_path}")
+            print(f"✓ 分析结果已保存到: {results_path}")
+        except Exception as e:
+            logger.error(f"保存分析结果失败: {str(e)}")
+            print(f"警告: 保存分析结果失败，但继续处理视频片段")
+            results_path = None
+
         # 7. 剪辑视频片段
         logger.info("步骤7: 剪辑视频片段")
         print("\n[4/5] 正在剪辑视频片段...")

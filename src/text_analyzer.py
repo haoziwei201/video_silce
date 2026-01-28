@@ -94,10 +94,17 @@ class TextAnalyzer:
             
             # 4. 解析 AI 返回的 JSON 字符串
             clean_response = content.strip()
-            if clean_response.startswith("```"):
-                clean_response = clean_response.split("\n", 1)[1]
-                if clean_response.endswith("```"):
-                    clean_response = clean_response.rsplit("\n", 1)[0]
+            
+            # 尝试使用正则提取 JSON 列表
+            match = re.search(r'\[.*\]', clean_response, re.DOTALL)
+            if match:
+                clean_response = match.group()
+            else:
+                # 如果正则没匹配到，尝试简单的 Markdown 清理作为备选
+                if clean_response.startswith("```"):
+                    clean_response = clean_response.split("\n", 1)[1]
+                    if clean_response.endswith("```"):
+                        clean_response = clean_response.rsplit("\n", 1)[0]
             
             result_list = json.loads(clean_response)
             return result_list
@@ -105,7 +112,7 @@ class TextAnalyzer:
         except Exception as e:
             print(f"API 调用或解析失败: {e}")
             return []
-
+'''
 # 测试代码
 if __name__ == "__main__":
     # 模拟数据加载路径
@@ -135,3 +142,4 @@ if __name__ == "__main__":
         print(json.dumps(results, indent=2, ensure_ascii=False))
     else:
         print("未找到测试数据，请检查 data/transcripts/text_trans.json")
+'''
