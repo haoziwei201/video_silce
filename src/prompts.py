@@ -18,7 +18,7 @@ MAIN_PROMPT_TEMPLATE = """
 - reason: 推荐理由（简短说明，str）
 
 要求：
-1. 严格遵守 JSON 格式，不要包含 markdown 代码块标记。
+1. 仅返回纯 JSON 数组，不包含任何多余文字或代码块标记。
 2. start_time 和 end_time 必须准确对应字幕中的时间。
 3. 如果没有符合要求的片段，返回空列表 []。
 

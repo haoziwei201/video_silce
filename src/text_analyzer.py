@@ -57,7 +57,8 @@ class TextAnalyzer:
         # 1. 准备发给 AI 的素材
         context_text = ""
         for item in words:
-            context_text += f"[{item['start']}-{item['end']}] {item['word']}\n"
+            t = item.get("text", item.get("word", ""))
+            context_text += f"[{item['start']}-{item['end']}] {t}\n"
 
         # 2. 构造 Prompt
         if not MAIN_PROMPT_TEMPLATE:

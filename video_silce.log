@@ -1,0 +1,94 @@
+2026-01-28 21:11:24,172 - __main__ - INFO - 开始视频智能剪辑流程
+2026-01-28 21:11:24,172 - __main__ - INFO - 步骤1: 检查目录结构
+2026-01-28 21:11:24,172 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\input_videos
+2026-01-28 21:11:24,173 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\output_videos
+2026-01-28 21:11:24,173 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\processed_audio
+2026-01-28 21:11:24,173 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\transcripts
+2026-01-28 21:11:24,174 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\analysis_results
+2026-01-28 21:11:24,174 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\slice_video
+2026-01-28 21:11:24,174 - __main__ - INFO - 步骤2: 获取用户输入
+2026-01-28 21:11:24,176 - __main__ - INFO - 处理视频: test.mp4
+2026-01-28 21:11:24,176 - __main__ - INFO - 用户指令: ?????????????
+2026-01-28 21:11:24,176 - __main__ - INFO - 步骤3: 初始化处理器
+2026-01-28 21:11:24,177 - __main__ - INFO - 步骤4: 提取音频
+2026-01-28 21:11:24,178 - __main__ - INFO - 步骤5: 语音转文字
+2026-01-28 21:11:24,178 - __main__ - INFO - 步骤6: 文本分析
+2026-01-28 21:11:33,574 - __main__ - INFO - 步骤7: 剪辑视频片段
+2026-01-28 21:11:33,579 - __main__ - INFO - 步骤8: 合并剪辑片段
+2026-01-28 21:11:33,580 - __main__ - INFO - 视频处理完成，输出文件: E:\video-silce\video_silce\data\output_videos\test_edited.mp4
+2026-01-28 21:17:55,511 - __main__ - INFO - 开始视频智能剪辑流程
+2026-01-28 21:17:55,511 - __main__ - INFO - 步骤1: 检查目录结构
+2026-01-28 21:17:55,511 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\input_videos
+2026-01-28 21:17:55,511 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\output_videos
+2026-01-28 21:17:55,512 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\processed_audio
+2026-01-28 21:17:55,512 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\transcripts
+2026-01-28 21:17:55,512 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\analysis_results
+2026-01-28 21:17:55,512 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\slice_video
+2026-01-28 21:17:55,512 - __main__ - INFO - 步骤2: 获取用户输入
+2026-01-28 21:17:55,513 - __main__ - INFO - 处理视频: test.mp4
+2026-01-28 21:17:55,513 - __main__ - INFO - 用户指令: ?????????????
+2026-01-28 21:17:55,514 - __main__ - INFO - 步骤3: 初始化处理器
+2026-01-28 21:17:55,514 - __main__ - INFO - 步骤4: 提取音频
+2026-01-28 21:17:55,515 - __main__ - INFO - 步骤5: 语音转文字
+2026-01-28 21:17:55,515 - __main__ - INFO - 步骤6: 文本分析
+2026-01-28 21:18:04,508 - __main__ - INFO - 步骤7: 剪辑视频片段
+2026-01-28 21:18:04,512 - __main__ - INFO - 步骤8: 合并剪辑片段
+2026-01-28 21:18:04,513 - __main__ - INFO - 视频处理完成，输出文件: E:\video-silce\video_silce\data\output_videos\test_edited.mp4
+2026-01-28 22:26:46,415 - __main__ - INFO - 开始视频智能剪辑流程
+2026-01-28 22:26:46,415 - __main__ - INFO - 步骤1: 检查目录结构
+2026-01-28 22:26:46,416 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\input_videos
+2026-01-28 22:26:46,416 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\output_videos
+2026-01-28 22:26:46,416 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\processed_audio
+2026-01-28 22:26:46,416 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\transcripts
+2026-01-28 22:26:46,416 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\analysis_results
+2026-01-28 22:26:46,416 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\slice_video
+2026-01-28 22:26:46,416 - __main__ - INFO - 步骤2: 获取用户输入
+2026-01-28 22:26:46,417 - __main__ - INFO - 处理视频: test.mp4
+2026-01-28 22:26:46,417 - __main__ - INFO - 用户指令: ?????????????
+2026-01-28 22:26:46,418 - __main__ - INFO - 步骤3: 初始化处理器
+2026-01-28 22:26:46,418 - __main__ - INFO - 步骤4: 提取音频
+2026-01-28 22:26:46,446 - __main__ - ERROR - 音频提取失败
+2026-01-28 22:27:30,473 - __main__ - INFO - 开始视频智能剪辑流程
+2026-01-28 22:27:30,473 - __main__ - INFO - 步骤1: 检查目录结构
+2026-01-28 22:27:30,473 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\input_videos
+2026-01-28 22:27:30,474 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\output_videos
+2026-01-28 22:27:30,474 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\processed_audio
+2026-01-28 22:27:30,474 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\transcripts
+2026-01-28 22:27:30,474 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\analysis_results
+2026-01-28 22:27:30,474 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\slice_video
+2026-01-28 22:27:30,474 - __main__ - INFO - 步骤2: 获取用户输入
+2026-01-28 22:27:30,475 - __main__ - INFO - 处理视频: test.mp4
+2026-01-28 22:27:30,475 - __main__ - INFO - 用户指令: ?????????????
+2026-01-28 22:27:30,475 - __main__ - INFO - 步骤3: 初始化处理器
+2026-01-28 22:27:30,476 - __main__ - INFO - 步骤4: 提取音频
+2026-01-28 22:27:30,694 - __main__ - INFO - 步骤5: 语音转文字
+2026-01-28 22:27:30,695 - __main__ - INFO - 步骤6: 文本分析
+2026-01-28 22:27:40,252 - __main__ - INFO - 步骤7: 剪辑视频片段
+2026-01-28 22:27:40,399 - __main__ - WARNING - 剪辑片段 1 失败: 4.0 - 9.2
+2026-01-28 22:27:40,547 - __main__ - WARNING - 剪辑片段 2 失败: 15.5 - 20.8
+2026-01-28 22:27:40,690 - __main__ - WARNING - 剪辑片段 3 失败: 21.0 - 25.5
+2026-01-28 22:27:40,855 - __main__ - WARNING - 剪辑片段 4 失败: 25.8 - 30.2
+2026-01-28 22:27:41,003 - __main__ - WARNING - 剪辑片段 5 失败: 30.5 - 34.0
+2026-01-28 22:27:41,004 - __main__ - ERROR - 所有视频片段剪辑都失败
+2026-01-28 22:28:12,892 - __main__ - INFO - 开始视频智能剪辑流程
+2026-01-28 22:28:12,893 - __main__ - INFO - 步骤1: 检查目录结构
+2026-01-28 22:28:12,893 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\input_videos
+2026-01-28 22:28:12,893 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\output_videos
+2026-01-28 22:28:12,893 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\processed_audio
+2026-01-28 22:28:12,894 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\transcripts
+2026-01-28 22:28:12,894 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\analysis_results
+2026-01-28 22:28:12,894 - __main__ - INFO - 确保目录存在: E:\video-silce\video_silce\data\slice_video
+2026-01-28 22:28:12,894 - __main__ - INFO - 步骤2: 获取用户输入
+2026-01-28 22:28:12,896 - __main__ - INFO - 处理视频: test.mp4
+2026-01-28 22:28:12,896 - __main__ - INFO - 用户指令: ?????????????
+2026-01-28 22:28:12,896 - __main__ - INFO - 步骤3: 初始化处理器
+2026-01-28 22:28:12,897 - __main__ - INFO - 步骤4: 提取音频
+2026-01-28 22:28:13,116 - __main__ - INFO - 步骤5: 语音转文字
+2026-01-28 22:28:13,117 - __main__ - INFO - 步骤6: 文本分析
+2026-01-28 22:28:23,110 - __main__ - INFO - 步骤7: 剪辑视频片段
+2026-01-28 22:28:23,799 - __main__ - WARNING - 剪辑片段 2 失败: 15.5 - 20.8
+2026-01-28 22:28:23,947 - __main__ - WARNING - 剪辑片段 3 失败: 21.0 - 25.5
+2026-01-28 22:28:24,098 - __main__ - WARNING - 剪辑片段 4 失败: 25.8 - 30.2
+2026-01-28 22:28:24,247 - __main__ - WARNING - 剪辑片段 5 失败: 30.5 - 34.0
+2026-01-28 22:28:24,248 - __main__ - INFO - 步骤8: 合并剪辑片段
+2026-01-28 22:28:24,757 - __main__ - INFO - 视频处理完成，输出文件: E:\video-silce\video_silce\data\output_videos\test_edited.mp4
