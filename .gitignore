@@ -1,0 +1,73 @@
+# --- Python 基础 --- 
+__pycache__/ 
+*.py[cod] 
+*$py.class 
+*.so 
+.Python 
+build/ 
+develop-eggs/ 
+dist/ 
+downloads/ 
+eggs/ 
+.eggs/ 
+lib/ 
+lib64/ 
+parts/ 
+sdist/ 
+var/ 
+wheels/ 
+pip-log.txt 
+pip-delete-this-directory.txt 
+.toast 
+.buildpath 
+.project 
+
+# --- 虚拟环境 (最重要！不要删这一行) --- 
+venv/ 
+.venv/ 
+env/ 
+ENV/ 
+env.bak/ 
+venv.bak/ 
+
+# --- 敏感信息 --- 
+.env 
+secret_key.txt 
+
+# --- 日志和临时文件 --- 
+*.log 
+tmp/ 
+temp/ 
+
+# --- 单元测试 --- 
+.pytest_cache/ 
+.coverage 
+htmlcov/ 
+
+# --- IDE (Trae/VS Code) --- 
+.vscode/ 
+.idea/ 
+*.swp 
+*.swo 
+
+# --- 操作系统垃圾文件 --- 
+.DS_Store 
+Thumbs.db 
+
+# --- 项目特有数据 (防止上传大文件) --- 
+# 我们忽略 data 文件夹下的所有具体文件，但保留文件夹结构 
+data/input_videos/*
+data/processed_audio/*
+data/slice_video/*
+data/output_videos/*
+
+# 忽略临时生成的 JSON 结果，防止队友拉取时产生冲突 
+data/transcripts/*.json
+data/analysis_results/*.json
+
+# ---例外规则 (保留特定文件)---
+# 保留目录占位文件
+!data/**/empty.txt
+
+# 保留预设的测试字幕数据
+!data/transcripts/text_trans.json
