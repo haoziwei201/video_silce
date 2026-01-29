@@ -1,6 +1,6 @@
 import os
 import sys
-from moviepy.editor import VideoFileClip, concatenate_videoclips
+from moviepy import VideoFileClip, concatenate_videoclips
 
 # 将项目根目录添加到系统路径，以便导入 config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
