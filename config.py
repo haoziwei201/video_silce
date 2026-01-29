@@ -15,6 +15,9 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-370cdf2f51a44cccb046967e686
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 LLM_MODEL = "deepseek-chat"
 
+# API配置 - DashScope (Paraformer)
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+
 # 路径配置
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INPUT_VIDEO_DIR = os.path.join(BASE_DIR, "data", "input_videos")

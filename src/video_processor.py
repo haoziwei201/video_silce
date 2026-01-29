@@ -46,7 +46,7 @@ class VideoProcessor:
                 if audio is None:
                     print("Error: Video has no audio track.")
                     return False
-                audio.write_audiofile(output_audio_path, logger=None)
+                audio.write_audiofile(output_audio_path, logger=None, fps=16000)
             return True
         except Exception as e:
             print(f"提取音频失败: {e}")

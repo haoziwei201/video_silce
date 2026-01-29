@@ -2,7 +2,7 @@ moviepy(为1.0.3，不能超过2.0版本，不然会引用错误)
 requests
 python-dotenv
 ffmpeg-python
-openai-whisper
+dashscope
 fastapi
 uvicorn
 pydantic
