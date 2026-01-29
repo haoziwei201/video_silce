@@ -4,6 +4,10 @@ import logging
 from typing import List, Dict
 import dashscope
 from dashscope.audio.asr import Recognition
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from config import DASHSCOPE_API_KEY, TRANSCRIPTS_DIR
 
 logger = logging.getLogger(__name__)
@@ -46,21 +50,25 @@ class SpeechToText:
             model='paraformer-realtime-v1',
             format='wav',
             sample_rate=16000,
-            callback=None
+            callback=None,
+            enable_timestamp=True,
+
         )
 
         try:
+            logger.info(f"准备开始获取responses")
             responses = recognition.call(audio_path)
-            
+            logger.info(f"成功获取responses")
             results = []
             
             # 遍历生成器获取结果
-            for response in responses:
-                if response.status_code == 200:
-                    output = response.output
-                    # 检查是否有句子结束的标志
-                    if output and 'sentence' in output:
-                        sentence = output['sentence']
+            if responses.status_code == 200:
+                output = responses.output
+                if 'sentence' in output:
+                    sentences = output['sentence']
+
+                    for sentence in sentences:
+                
                         text = sentence.get('text', '')
                         if text:
                             # Paraformer 返回的时间戳通常是毫秒
@@ -71,9 +79,9 @@ class SpeechToText:
                                 "word": text,
                                 "start": start_time,
                                 "end": end_time
-                            })
-                else:
-                    logger.error(f"识别流错误: {response.code} - {response.message}")
+                                })
+            else:
+                logger.error(f"识别流错误: {responses.code} - {responses.message}")
             
             logger.info(f"识别完成，共获取 {len(results)} 条句子")
             return self._normalize(results)
