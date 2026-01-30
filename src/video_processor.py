@@ -46,8 +46,10 @@ class VideoProcessor:
                 if audio is None:
                     print("Error: Video has no audio track.")
                     return False
-                # 强制转换为单声道 (ac=1) 和 16000Hz (paraformer-v2 推荐)
-                audio.write_audiofile(output_audio_path, logger=None, fps=16000, ffmpeg_params=["-ac", "1"])
+                # 强制转换为单声道 (ac=1) 和 16000Hz (或者8000Hz，取决于模型要求)
+                # 用户要求使用 8k 模型，建议将采样率设为 8000，但通常 16k 也可以（模型会下采样）
+                # 为了安全起见和减少数据量，这里我们配合模型设置为 8000，并强制单声道
+                audio.write_audiofile(output_audio_path, logger=None, fps=8000, ffmpeg_params=["-ac", "1"])
             return True
         except Exception as e:
             print(f"提取音频失败: {e}")

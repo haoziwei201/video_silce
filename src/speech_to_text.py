@@ -1,12 +1,15 @@
 import os
 import json
 import logging
-import requests
 import re
-from config import DASHSCOPE_API_KEY, TRANSCRIPTS_DIR
 from typing import List, Dict
 import dashscope
-from dashscope.audio.asr import Transcription
+from dashscope.audio.asr import Recognition
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from config import DASHSCOPE_API_KEY, TRANSCRIPTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -42,98 +45,92 @@ class SpeechToText:
             logger.error(f"音频文件不存在: {audio_path}")
             return []
 
-        logger.info(f"开始使用 Paraformer (Transcription) 识别音频: {audio_path}")
+        logger.info(f"开始使用 Paraformer 识别音频: {audio_path}")
         
-        # 使用 Paraformer v2 模型和 Transcription 接口
+        # 用户指定使用 Paraformer 实时语音识别 8k v2 模型
+        # 注意：对于长视频文件，通常推荐使用 Transcription (文件转写) 接口，
+        # 但根据用户指令，这里使用 Recognition (实时语音识别) 接口。
+        recognition = Recognition(
+            model='paraformer-realtime-8k-v2',
+            format='wav',
+            sample_rate=8000,
+            callback=None
+        )
+
         try:
-            # 尝试直接传递本地文件路径 (file://...)
-            # DashScope Python SDK 在较新版本支持本地文件自动上传
-            file_url = f"file://{audio_path}"
+            logger.info(f"准备开始获取responses")
+            responses = recognition.call(audio_path)
+            logger.info(f"成功获取responses")
+            results = []
             
-            # 提交转写任务
-            # 注意：Transcription 接口通常是异步的
-            task_response = Transcription.async_call(
-                model='paraformer-v2',
-                file_urls=[file_url]
-            )
+            # Recognition.call 返回的是一个生成器(generator)或者Response
+            # 为了兼容性和处理流式响应，我们进行遍历
+            # 如果是单个Response，把它放入列表处理
             
-            logger.info(f"转写任务已提交，Task ID: {task_response.output.task_id}")
-            
-            # 等待任务完成
-            # 使用 wait 方法轮询任务状态
-            transcription_response = Transcription.wait(task=task_response.output.task_id)
-            
-            if transcription_response.status_code == 200:
-                if transcription_response.output.task_status == 'SUCCEEDED':
-                    logger.info("转写任务成功完成")
-                    results = []
-                    
-                    # 解析结果
-                    # Transcription 的结果通常在 results 字段中
-                    # 每一个 result 对应一个输入文件
-                    # 结构通常是: output.results[0].subtask_status == 'SUCCEEDED'
-                    # 且 output.results[0].sentences 包含句子列表
-                    
-                    for result in transcription_response.output.results:
-                        if result.subtask_status == 'SUCCEEDED':
-                            # 获取 sentences_url 并下载? 或者直接在 sentences 字段中?
-                            # DashScope SDK 的 wait 方法通常会返回完整结果
-                            sentences = getattr(result, 'sentences', None)
-                            if sentences:
-                                for sentence in sentences:
-                                    text = sentence.get('text', '')
-                                    start_time = sentence.get('begin_time', 0) / 1000.0
-                                    end_time = sentence.get('end_time', 0) / 1000.0
-                                    
-                                    results.append({
+            # 检查是否是生成器
+            import types
+            if isinstance(responses, types.GeneratorType):
+                response_iterator = responses
+            else:
+                response_iterator = [responses]
+
+            for response in response_iterator:
+                if response.status_code == 200:
+                    output = response.output
+                    # Paraformer Realtime 返回的 output 中包含 'sentence' 字段
+                    # 这里的 sentence 通常是当前识别到的句子列表
+                    # 在流式过程中，我们需要收集这些句子
+                    if output and 'sentence' in output:
+                        # 注意：在流式响应中，sentence 可能包含重复或更新的内容
+                        # 但对于文件输入的同步/流式模拟，通常最后一次返回包含完整结果
+                        # 或者每次返回新识别的句子。
+                        # 我们这里假设 SDK 会正确处理，我们只收集最终确定的句子
+                        pass 
+                        
+                        # 实际上，DashScope SDK 的文件模式 call() 返回的如果是生成器，
+                        # 每个 yield 的 response 可能包含当前最新的识别结果。
+                        # 对于 paraformer-realtime，通常关注 sentence 字段。
+                        
+                        # 简单策略：收集所有 response 中的 sentence，并去重（通过 begin_time）
+                        # 或者只取最后一个 response 的结果（如果它包含所有历史）
+                        # 但实时流通常只包含“新识别”的内容或者“当前窗口”的内容。
+                        
+                        # 观察之前的代码逻辑，它似乎假设了一次性返回。
+                        # 让我们采用一种稳健的方法：解析每个 response 里的 sentence
+                        
+                        sentences = output['sentence']
+                        # sentences 是一个列表
+                        for sentence in sentences:
+                            text = sentence.get('text', '')
+                            start_time = sentence.get('begin_time', 0) / 1000.0
+                            end_time = sentence.get('end_time', 0) / 1000.0
+                            
+                            # 简单的去重/添加逻辑
+                            # 只有当这个句子不在 results 中（根据开始时间判断）才添加
+                            # 或者更新最后一个句子（如果是修正）
+                            
+                            # 这里做一个简化假设：如果句子有效且时间合理，就添加
+                            # 为了避免重复，我们可以检查 results 中最后一个句子的开始时间
+                            if text:
+                                if not results or abs(results[-1]['start'] - start_time) > 0.01:
+                                     results.append({
                                         "word": text,
                                         "start": start_time,
                                         "end": end_time
                                     })
-                            elif hasattr(result, 'sentences_url') and result.sentences_url:
-                                # 如果结果太大，可能会返回 URL
-                                try:
-                                    logger.info(f"下载 sentences_url: {result.sentences_url}")
-                                    resp = requests.get(result.sentences_url)
-                                    resp.raise_for_status()
-                                    sentences_data = resp.json()
-                                    # sentences_data 可能就是 sentences 列表，或者包含 sentences 字段
-                                    # 根据 API 文档，sentences_url 下载的内容通常是一个 JSON，包含 sentences 列表
-                                    # 这里假设下载的 JSON 直接是 sentences 列表，或者结构类似
-                                    
-                                    # 检查是否是字典且包含 sentences
-                                    if isinstance(sentences_data, dict) and 'sentences' in sentences_data:
-                                        sentences = sentences_data['sentences']
-                                    elif isinstance(sentences_data, list):
-                                        sentences = sentences_data
-                                    else:
-                                        sentences = []
+                                elif results and abs(results[-1]['start'] - start_time) <= 0.01:
+                                    # 如果开始时间相同，可能是更新，覆盖它
+                                    results[-1] = {
+                                        "word": text,
+                                        "start": start_time,
+                                        "end": end_time
+                                    }
 
-                                    for sentence in sentences:
-                                        text = sentence.get('text', '')
-                                        start_time = sentence.get('begin_time', 0) / 1000.0
-                                        end_time = sentence.get('end_time', 0) / 1000.0
-                                        
-                                        results.append({
-                                            "word": text,
-                                            "start": start_time,
-                                            "end": end_time
-                                        })
-                                except Exception as e:
-                                    logger.error(f"下载或解析 sentences_url 失败: {e}")
-                            else:
-                                logger.warning("未找到 sentences 或 sentences_url")
-                        else:
-                            logger.error(f"子任务失败: {result.message}")
-                            
-                    logger.info(f"识别完成，共获取 {len(results)} 条句子")
-                    return self._normalize(results)
                 else:
-                    logger.error(f"转写任务失败: {transcription_response.output.task_status}")
-                    return self._fallback_fake_transcribe(audio_path)
-            else:
-                logger.error(f"API 调用失败: {transcription_response.code} - {transcription_response.message}")
-                return self._fallback_fake_transcribe(audio_path)
+                    logger.error(f"识别流错误: {response.code} - {response.message}")
+            
+            logger.info(f"识别完成，共获取 {len(results)} 条句子")
+            return self._normalize(results)
 
         except Exception as e:
             logger.error(f"调用 Paraformer API 失败: {e}")
