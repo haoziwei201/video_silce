@@ -33,6 +33,9 @@ class TextAnalyzer:
         设置DeepSeek API的认证信息
         """
         self.api_key = DEEPSEEK_API_KEY
+        if not self.api_key:
+            print("警告: 未找到 DEEPSEEK_API_KEY，请在 .env 文件中配置")
+
         self.base_url = DEEPSEEK_BASE_URL
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -55,6 +58,10 @@ class TextAnalyzer:
                 }
         """
         
+        if not self.api_key:
+             print("Error: Missing DEEPSEEK_API_KEY. Cannot analyze transcript.")
+             return []
+
         # 1. 准备发给 AI 的素材
         context_text = ""
         for item in words:

@@ -2,8 +2,9 @@ moviepy
 requests
 python-dotenv
 ffmpeg-python
-dashscope
+dashscope>=1.14.0
 fastapi
 uvicorn
 pydantic
 pydantic-settings
+

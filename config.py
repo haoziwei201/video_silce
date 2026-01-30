@@ -11,7 +11,7 @@ except ImportError:
 
 # API配置 - DeepSeek
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-370cdf2f51a44cccb046967e6869f499")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 LLM_MODEL = "deepseek-chat"
 
