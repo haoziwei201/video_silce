@@ -1,173 +1,112 @@
-# video_silce
+# Video Swagger: 垂直行业私有视频资产 AI 炼金术师
 
-######  我们现阶段的目标是让程序能正常跑起来，尽量保证不会出bug，关于准确性、RAG检索和商业模式之类的功能我个人建议后期完善。
-######  如果后面的接口有疑问或者说实现功能需要的信息不够的话，要在群里提出来，要进行修改的
-######
-######  我们要实现这个程序的话，主要是实现群里发的分工的B、C、D部分，但为了方便一些，功能要稍微调整一下。
-######  负责处理B部分的不需要处理视频转音频，而要实现利用模型将音频转为文本（speech_to_text.py）
-######  负责处理C部分的要根据刚才的文本对LLM进行询问，来筛选对应的片段。（text_analyzer.py和prompts.py）
-######  负责处理D部分的要处理所有的视频相关操作，包括视频转音频，根据筛选的片段对视频进行切片，可以话还建议提供合并切片的功能。
-######  我们现在只是实现最简单的功能，群里面发的那些分工要干的事实际上是整个项目流程要干的事，我们如果要先写一个能跑起来的程序的话，不需要做一开始就做那么狠。
-######
-### 文件基础结构
+> **Harnessing the Power of LLMs for Non-Linear Editing and RAG-Based Question-Answering**
 
-##### video_silce/
-##### │
-##### ├── main.py                    // 程序入口，通过该文件执行完整过程
-##### ├── config.py                  // 配置文件（记录API密钥、视频路径等）
-##### ├── .env                  // 以环境变量形式存放API信息，保护API （现阶段可以不要，直接在config.py中存储API信息）
-##### ├── requirements.txt           // 依赖库列表及其版本
-##### ├── README.md                  // 项目说明
-##### │
-##### ├── src/                       // 主要代码文件
-##### │&emsp;   ├── __init__.py            // 空文件，把src文件当成一个python包
-##### │&emsp;   ├── video_processor.py     // 视频处理模块，对视频进行分割、剪辑等视频操作，同时也包含讲视频转换为音频的功能
-##### │&emsp;   ├── speech_to_text.py      // 音频转文字模块，利用模型讲音频转为带有时间戳的文本
-##### │&emsp;   ├── text_analyzer.py       // 文本分析模块（或包含评分模块），利用ai把转录的文本进行处理、评分、筛选
-##### │&emsp;   ├── prompts.py             // ai的提示词模板
-##### │&emsp;   ├── utils.py               // 工具函数，如时间的格式化显式之类的小功能，暂时可以用不上
-##### │&emsp;   └──………………                 // 后续改进新增的文件   
-##### │ 
-##### ├── data/                      // 数据目录
-##### │&emsp;   ├── input_videos/         // 存放输入的原始视频的文件夹
-##### │&emsp;   ├── processed_audio/      // 存放视频转换成的音频文件的文件夹
-##### │&emsp;   ├── slice_videos/        // 存放生成的片段短视频的文件夹
-##### │&emsp;   ├── output_videos/        // 存放生成的合并的短视频的文件夹
-##### │&emsp;   ├── transcripts/        // 存放音频转成的文本的文件夹（以.json形式存储）
-##### │&emsp;   ├── analysis_results/        // 存放LLM分析的结果的文件夹（以.json形式存储）
-##### │&emsp;   └──……………………………………        // 后续改进新增的文件
-##### └──………………………… //后续新增文件
+**Video Swagger** 是一个面向垂直行业（职业教育、非遗传承、技能培训）的智能视频资产管理与重构系统。
 
-### 接口定义
-#### config.py：各种路径、API、模型等参数
-##### 全局变量：
-#####    DEEPSEEK_API_KEY,      // DeepSeek API密钥
-#####    DEEPSEEK_BASE_URL      //DeepSeek API地址
-#####    INPUT_VIDEO_DIR,       // 输入视频目录路径
-#####    SLICE_VIDEO_DIR,       // 输出的片段视频目录路径
-#####    OUTPUT_VIDEO_DIR,      // 输出的合并视频目录路径
-#####    PROCESSED_AUDIO_DIR,   // 音频文件路径
-#####    ANALYSIS_RESULTS_DIR   //LLM分析结果路径
-#####    TRANSCRIPTS_DIR        //音频转文本存放结果
-#####
-##### 使用示例：from config import DEEPSEEK_API_KEY(其他的全局变量同理使用INPUT_VIDEO_DIR,OUTPUT_VIDEO_DIR,PROCESSED_AUDIO_DIR,TRANSCRIPTS_DIR,PARAFORMER_MODEL)
-##### video_path = os.path.join(INPUT_VIDEO_DIR, "test.mp4")
-##### audio_path = os.path.join(PROCESSED_AUDIO_DIR, "test.wav")
-#####
-##### 注：音频转文本的操作要调用的模型或者API这里没有写，因为这种模型或API有很多种，负责这一块操作的人可以先决定要使用什么模型，后续再补充新的接口
-##### 
-### video_processor.py:视频相关操作
-##### 类定义：
-    class VideoProcessor:    
-    def __init__(self): # 初始化的
-        pass  
-    
-    def extract_audio(self, video_path, output_audio_path):
-        """
-        从视频中提取音频，也就是将视频转换为音频
-        参数Args:
-            video_path: 输入视频文件路径
-            output_audio_path: 输出音频文件路径
-        返回Returns:
-            bool: 是否成功，成功返回True，失败返回False
-        """
-    
-    def create_clip(self, video_path, start_time, end_time, output_path):
-        """
-        剪辑视频的片段，输入参数有起始时间和终止时间，要做的是把这两个时间区间的视频片段剪出来
-        参数Args:
-            video_path: 输入视频的路径
-            start_time: 开始时间（秒）
-            end_time: 结束时间（秒）
-            output_path: 输出剪辑视频的路径，这里不是最终的输出视频的路径，可以创建临时的位置，比如直接在跟目录创建并在程序运行最后删除
-        Returns:
-            bool: 是否成功，成功返回True，失败返回False
-        """
-    
-    def combine_clips(self, clip_paths, output_path):
-        """
-        合并多个视频片段，把上个函数那些视频片段整合起来。
-        参数Args:
-            clip_paths: 视频片段路径列表，也就是上个函数剪出来的视频的地址的列表。
-            output_path: 合并后的视频存放路径，也就是输出视频的存放路径
-        Returns:
-            bool: 是否成功
-        """
-#####
-### speech_to_text.py：将音频转换为带有时间戳的文本
-##### 类定义：
-    class SpeechToText:
-    """语音识别器，使用Paraformer进行语音转文字"""
-    
-    def __init__(self):
-        """
-        初始化语音识别模型或者API的调用设置
-        """
-    
-    def transcribe(self, audio_path):
-        """
-        将音频文件转录为带时间戳的文本
-        参数Args:
-            audio_path: 音频文件路径
-        返回Returns:
-            列表list: 带时间戳的单词/句子列表
-                每个元素为字典格式: {"word": str, "start": float, "end": float}
-        示例返回:
-        [
-            {"word": "你好，欢迎观看本视频。", "start": 0.0, "end": 2.5},
-            {"word": "今天我们要讲的是人工智能。", "start": 2.5, "end": 5.0}
-        ]
-        """
-#####
-### text_analyzer.py：文本语句分析，衔接上一个python源文件
-##### 类定义：
-    class TextAnalyzer:
-    """文本分析器，使用DeepSeek API分析转录文本"""
-    
-    def __init__(self):
-        """
-        初始化文本分析器
-        设置DeepSeek API的认证信息
-        """
-        
-    def analyze_transcript(self, words, user_instruction) -> list:
-        """
-        分析转录文本，返回推荐的剪辑片段
-        参数Args:
-            words: 带时间戳的单词列表，也就是上一个python源文件的返回结果
-            user_instruction: 用户指令（如"找出最精彩的部分"）
-        返回Returns:
-            列表list: 要剪辑片段列表
-                每个元素字典格式: {
-                    "start_time": float,
-                    "end_time": float,
-                    "reason": str,
-                    "score": int
-                }
-        
-        示例返回:
-        [
-            {
-                "start_time": 15.5,
-                "end_time": 32.0,
-                "reason": "这部分介绍了核心概念，讲解清晰",
-                "score": 9
-            }
-        ]
-        """
-#####
-### prompts.py：提示词模板
-##### 全局变量：
-##### MAIN_PROMPT_TEMPLATE //提示词模板，调用AI的时候用
-#####
-### main.py:程序执行的集中部分。
-##### 具体过程简述：
-##### 1. 初始化
-##### 2. 获取用户输入信息，确认目标视频是否存在
-##### 3. 提取音频
-##### 4. 语言转文本+时间戳
-##### 5. 文本分析
-##### 6. 根据分析结果剪辑视频，可以剪辑多个片段，或者把多个片段合并
-##### 7. 输出结果到目标文件夹
+旨在解决长视频（如 2 小时的技能教学、手工艺录像）**“非结构化、难检索、难传播”**的痛点。通过多模态 AI 技术，我们将沉睡在硬盘里的“死视频”炼化为**“高传播力的短视频”**和**“可交互的知识库”**。
 
+---
 
+## 🌟 核心价值
+
+*   **社会价值（Social Impact）**：响应“数字工匠”与“乡村振兴”号召。帮助非遗传承人和新农人将隐性的实操技艺，转化为显性的、易于传播的数字资产，降低技能学习门槛。
+*   **商业价值（Commercial Value）**：为职业培训机构提供降本增效工具。将课程制作成本降低 90%，并提供“7x24小时 AI 助教”功能，实现从“卖视频”到“卖服务”的转型。
+
+---
+
+## 🏗️ 系统架构与功能模块
+
+本项目采用 **“感知 - 决策 - 执行”** 的闭环架构，包含四大核心模块：
+
+### 1. 多模态资产解析引擎 (Ingestion & Analysis Engine)
+*负责将非结构化的视频流转化为结构化的语义数据。*
+*   **高精度语音转写 (ASR)**：集成阿里 **Paraformer** 模型，实现毫秒级时间戳对齐，支持识别情绪、笑声与环境音。
+*   **静默操作理解 (Visual Understanding)**：*(开发中)* 针对技能教学中“只做不说”的静默片段，引入 **VLM (如 Qwen-VL)** 进行视觉抽帧描述，确保关键动作不丢失。
+
+### 2. 智能营销内容工厂 (Marketing Content Factory) —— *Current MVP*
+*负责“对外传播”，解决获客难问题。*
+*   **非线性语义剪辑**：利用 **DeepSeek** 大模型理解视频逻辑，打破原始时间轴，根据“信息密度”和“传播价值”重组片段。
+*   **自动化切片**：自动提取金句、高难度操作瞬间，生成 <60s 的高光短视频。
+
+### 3. 交互式视频知识库 (Interactive Video RAG) —— *In Progress*
+*负责“对内赋能”，解决检索难问题。*
+*   **语义检索 (Semantic Search)**：用户通过自然语言提问（如“发动机异响怎么排查？”），系统精准定位到视频中的具体操作步骤。
+*   **精准空降播放**：回答不仅是文字，而是直接播放包含答案的 15 秒视频切片，实现“视频即知识”。
+
+### 4. 企业级安全与管理 (Enterprise Security) —— *Roadmap*
+*负责私有资产保护。*
+*   支持私有化部署，确保核心技术视频不出域。
+
+---
+
+## 🚀 快速开始 (Getting Started)
+
+### 1. 环境准备
+```bash
+# 建议使用 python 3.10+
+pip install -r requirements.txt
+```
+
+### 2. 配置文件
+在项目根目录下创建 `.env` 文件（参考 `.env.example`），配置 API 密钥：
+```ini
+DASHSCOPE_API_KEY=sk-xxxx  # 阿里云灵积平台 Key (用于语音识别)
+DEEPSEEK_API_KEY=sk-xxxx   # DeepSeek Key (用于语义分析)
+```
+*注意：请勿将 `.env` 上传至版本控制系统。*
+
+### 3. 运行主程序
+将待处理视频放入 `data/input_videos/`，运行：
+```bash
+python main.py
+```
+
+---
+
+## 📂 文件结构说明
+
+```
+video_silce/
+├── main.py                    # [入口] 交互式命令行主程序
+├── config.py                  # [配置] 环境参数与路径管理
+├── requirements.txt           # [依赖] 项目依赖库
+├── .gitignore                 # [规范] Git 忽略规则
+├── src/                       # [核心代码]
+│   ├── video_processor.py     # 视频处理层：基于 MoviePy 的物理剪辑与合并
+│   ├── speech_to_text.py      # 感知层：调用 Paraformer 进行 ASR 转写
+│   ├── text_analyzer.py       # 决策层：调用 DeepSeek 进行语义评分与切片决策
+│   ├── prompts.py             # 提示工程：存储针对垂直行业的 Prompt 模板
+│   └── utils.py               # 工具层：日志记录与文件操作
+└── data/                      # [数据中心] (大文件已配置 gitignore)
+    ├── input_videos/          # 原始素材输入
+    ├── processed_audio/       # 中间态：提取的音频
+    ├── transcripts/           # 中间态：结构化语义数据 (JSON)
+    ├── analysis_results/      # 中间态：AI 剪辑决策表 (EDL)
+    └── output_videos/         # 最终产物：营销短视频/知识切片
+```
+
+---
+
+## 🗺️ 开发路线图 (Roadmap)
+
+我们正致力于将 Video Swagger 打造成行业标准的基础设施，未来计划逐步实现以下模块：
+
+- [ ] **多源兼容适配**：支持 Zoom/腾讯会议录制链接直接导入，支持流媒体格式。
+- [ ] **知识点图谱化**：自动提取视频中的 PPT 翻页与关键术语，生成可视化的“视频目录树”。
+- [ ] **视觉增强渲染**：自动生成动态字幕（AIGC Captions）与关键词高亮，提升完播率。
+- [ ] **人工微调工作台 (HITL)**：提供 Web 端可视化界面，允许专家对 AI 剪辑结果进行微调。
+- [ ] **企业级权限管理**：基于角色的访问控制 (RBAC) 与数据资产看板。
+
+---
+
+## 🛠️ 技术栈
+
+*   **LLM (大脑)**: DeepSeek-V3 / R1
+*   **ASR (听觉)**: Alibaba Paraformer / SenseVoice
+*   **Video Engine (手脚)**: MoviePy / FFmpeg
+*   **Architecture**: Python / RAG (Retrieval-Augmented Generation)
+
+---
+
+*Copyright © 2025 Video Swagger Team. All Rights Reserved.*
