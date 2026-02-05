@@ -7,4 +7,8 @@ fastapi
 uvicorn
 pydantic
 pydantic-settings
+chromadb
+tqdm
+numpy
+Pillow
 

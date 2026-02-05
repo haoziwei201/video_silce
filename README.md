@@ -4,7 +4,7 @@
 
 **Video Swagger** 是一个面向垂直行业（职业教育、非遗传承、技能培训）的智能视频资产管理与重构系统。
 
-旨在解决长视频（如 2 小时的技能教学、手工艺录像）**“非结构化、难检索、难传播”**的痛点。通过多模态 AI 技术，我们将沉睡在硬盘里的“死视频”炼化为**“高传播力的短视频”**和**“可交互的知识库”**。
+旨在解决长视频（如 2 小时的技能教学、手工艺录像）**“非结构化、难检索、难传播”**的痛点。通过多模态 AI 技术，我们将沉睡在硬盘里的“死视频”炼化为 **“高传播力的短视频”**和 **“可交互的知识库”**。
 
 ---
 
@@ -103,10 +103,11 @@ video_silce/
 ## 🛠️ 技术栈
 
 *   **LLM (大脑)**: DeepSeek-V3 / R1
-*   **ASR (听觉)**: Alibaba Paraformer / SenseVoice
+*   **ASR (听觉)**: Alibaba Paraformer 
 *   **Video Engine (手脚)**: MoviePy / FFmpeg
 *   **Architecture**: Python / RAG (Retrieval-Augmented Generation)
 
 ---
 
 *Copyright © 2025 Video Swagger Team. All Rights Reserved.*
+

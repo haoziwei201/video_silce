@@ -60,8 +60,16 @@ data/input_videos/*
 data/processed_audio/*
 data/slice_video/*
 data/output_videos/*
+data/keyframes/*
+
+# 向量数据库 (本地存储，不应上传)
+data/chroma_db/
+
+# API 缓存文件 (避免泄露或冲突)
+data/api_cache.json
 
 # 忽略临时生成的 JSON 结果，防止队友拉取时产生冲突 
+# (包括转录文件 *_transcript.json 和 RAG 清洗文件 *_rag.json)
 data/transcripts/*.json
 data/analysis_results/*.json
 

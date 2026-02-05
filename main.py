@@ -7,6 +7,7 @@ import sys
 import json
 import logging
 import glob
+import asyncio
 from pathlib import Path
 
 # 添加src目录到Python路径
@@ -22,6 +23,8 @@ from src.speech_to_text import SpeechToText
 from src.text_analyzer import TextAnalyzer
 from src.visual_recognition import VisualRecognition
 from src.data_merger import merge_audio_visual_data
+from src.data_cleaner import clean_json_data
+from src.rag_engine import VideoKnowledgeBase
 import numpy as np
 from PIL import Image
 
@@ -226,6 +229,23 @@ def calculate_image_difference(img1_path, img2_path):
         logger.warning(f"图片差异计算失败: {e}")
         return float('inf')
 
+async def analyze_keyframes_async(visual_recognition, keyframes_to_analyze):
+    """
+    异步分析关键帧列表
+    """
+    tasks = []
+    # 限制并发数为10，避免触发API限流
+    sem = asyncio.Semaphore(10)
+    
+    async def bounded_analyze(kf):
+        async with sem:
+            return await visual_recognition.analyze_image_async(kf['path'])
+
+    for kf in keyframes_to_analyze:
+        tasks.append(bounded_analyze(kf))
+    
+    return await asyncio.gather(*tasks)
+
 def main():
     """主函数"""
     logger.info("开始视频智能剪辑流程")
@@ -309,13 +329,12 @@ def main():
         last_processed_kf_path = None
         MSE_THRESHOLD = 50.0  # 差异阈值，低于此值视为画面未变
         
-        analyzed_count = 0
+        unique_keyframes = []
         skipped_count = 0
         
-        print("开始调用视觉模型分析关键帧...")
+        print("正在进行关键帧去重...")
         for kf in keyframes:
             kf_path = kf['path']
-            timestamp = kf['time']
             
             # 阶段2: 去重
             if last_processed_kf_path:
@@ -324,24 +343,36 @@ def main():
                     skipped_count += 1
                     continue
             
-            # 阶段1: API调用
-            print(f"  - 分析画面: {timestamp:.1f}s ...", end="\r")
-            description = visual_recognition.analyze_image(kf_path)
-            
+            unique_keyframes.append(kf)
+            last_processed_kf_path = kf_path
+
+        print(f"去重完成: 共有 {len(unique_keyframes)} 帧待分析, 跳过 {skipped_count} 帧")
+        
+        # 异步批量分析
+        print("开始异步调用视觉模型分析关键帧...")
+        
+        try:
+            descriptions = asyncio.run(analyze_keyframes_async(visual_recognition, unique_keyframes))
+        except Exception as e:
+            logger.error(f"异步分析出错: {e}")
+            print(f"异步分析出错: {e}")
+            descriptions = [None] * len(unique_keyframes)
+
+        analyzed_count = 0
+        for kf, description in zip(unique_keyframes, descriptions):
+            timestamp = kf['time']
             if description:
-                # 构造与语音转录一致的格式
                 visual_segments.append({
-                    "word": f"[视觉画面: {description}]", # 兼容字段
+                    "word": f"[视觉画面: {description}]", 
                     "text": f"[视觉画面: {description}]",
                     "start": timestamp,
-                    "end": timestamp + 2.0 # 假设持续时间
+                    "end": timestamp + 2.0
                 })
-                last_processed_kf_path = kf_path
                 analyzed_count += 1
             else:
                 logger.warning(f"Failed to analyze frame at {timestamp}")
-
-        print(f"\n✓ 视觉分析完成: 分析了 {analyzed_count} 帧, 跳过 {skipped_count} 帧 (重复)")
+                
+        print(f"\n✓ 视觉分析完成: 成功分析 {analyzed_count} 帧")
         
         # 整合结果 (使用新的融合逻辑)
         # transcript 是 ASR 结果列表
@@ -352,6 +383,46 @@ def main():
         
         # 保存转录结果
         transcript_path = save_transcript(full_transcript, video_name)
+        
+        # 5.6 RAG 数据清洗与入库 (测试)
+        logger.info("步骤5.6: RAG 数据准备与测试")
+        print("\n[RAG] 正在准备知识库数据...")
+        
+        if transcript_path:
+            rag_ready_path = transcript_path.replace(".json", "_rag.json")
+            # 假设 category 为 general，或者让 user_instruction 决定，这里先用 general
+            clean_json_data(transcript_path, rag_ready_path, category_tag="general")
+            
+            if os.path.exists(rag_ready_path):
+                 print("\n[RAG] 正在构建向量知识库...")
+                 # 加载清洗后的数据
+                 with open(rag_ready_path, 'r', encoding='utf-8') as f:
+                     rag_data = json.load(f)
+                 
+                 # 初始化知识库
+                 try:
+                     vkb = VideoKnowledgeBase()
+                     vkb.add_data(rag_data)
+                     
+                     # 测试搜索
+                     test_query = user_instruction  # 使用用户的指令作为测试查询
+                     print(f"\n[RAG] 测试检索: '{test_query}'")
+                     results = vkb.search(test_query, top_k=3)
+                     
+                     print("检索结果:")
+                     if results and 'documents' in results and results['documents']:
+                         for i, doc in enumerate(results['documents'][0]):
+                             # check if metadata exists and matches index
+                             if i < len(results['metadatas'][0]):
+                                 meta = results['metadatas'][0][i]
+                                 print(f"  {i+1}. [{meta['start']:.1f}s - {meta['end']:.1f}s] {doc}")
+                             else:
+                                 print(f"  {i+1}. {doc}")
+                 except Exception as e:
+                     print(f"[RAG] 错误: {e}")
+                     logger.error(f"RAG Error: {e}")
+            else:
+                logger.error("RAG 数据清洗失败，文件未生成")
         
         # 6. 文本分析
         logger.info("步骤6: 文本分析")
