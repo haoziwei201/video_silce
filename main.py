@@ -652,6 +652,93 @@ def video_editing():
             return False
     pass
 
+def convert_to_vertical():
+    """横屏转竖屏功能"""
+    logger.info("开始执行横屏转竖屏功能")
+    
+    try:
+        # 初始化视频处理器
+        video_processor = VideoProcessor()
+        
+        # 列出输入目录中的所有视频文件
+        video_files = []
+        if os.path.exists(INPUT_VIDEO_DIR):
+            for file in os.listdir(INPUT_VIDEO_DIR):
+                if file.lower().endswith(('.mp4', '.mov', '.avi', '.mkv')):
+                    video_files.append(file)
+        
+        if not video_files:
+            print(f"未在 {INPUT_VIDEO_DIR} 目录中找到视频文件。")
+            print("请将视频文件放入该目录后重新运行程序。")
+            return False
+        
+        # 显示可用的视频文件
+        print("\n可用的视频文件:")
+        for i, video_file in enumerate(video_files, 1):
+            print(f"  {i}. {video_file}")
+        
+        # 让用户选择视频
+        while True:
+            try:
+                choice = input(f"\n请选择要转换的视频 (1-{len(video_files)}) 或输入文件名: ").strip()
+                
+                # 如果用户直接输入了数字
+                if choice.isdigit():
+                    index = int(choice) - 1
+                    if 0 <= index < len(video_files):
+                        video_filename = video_files[index]
+                        break
+                    else:
+                        print(f"请输入 1-{len(video_files)} 之间的数字。")
+                
+                # 如果用户输入了文件名
+                elif choice in video_files:
+                    video_filename = choice
+                    break
+                
+                else:
+                    print("输入无效，请重新选择。")
+                    
+            except ValueError:
+                print("请输入有效的数字或文件名。")
+        
+        # 询问模糊半径
+        blur_radius_input = input("\n请输入模糊半径 (默认25): ").strip()
+        blur_radius = int(blur_radius_input) if blur_radius_input.isdigit() else 25
+        
+        # 处理视频
+        video_path = os.path.join(INPUT_VIDEO_DIR, video_filename)
+        video_name = os.path.splitext(video_filename)[0]
+        output_filename = f"{video_name}_vertical.mp4"
+        output_path = os.path.join(OUTPUT_VIDEO_DIR, output_filename)
+        
+        print(f"\n{'='*60}")
+        print(f"准备转换视频: {video_filename}")
+        print(f"模糊半径: {blur_radius}")
+        print(f"输出文件: {output_filename}")
+        print(f"{'='*60}")
+        
+        # 调用转换方法
+        success = video_processor.convert_to_vertical(video_path, output_path, blur_radius)
+        
+        if success:
+            print(f"\n{'='*60}")
+            print(f"转换完成!")
+            print(f"输出视频: {output_path}")
+            print(f"{'='*60}")
+            logger.info(f"横屏转竖屏完成，输出文件: {output_path}")
+            return True
+        else:
+            logger.error("横屏转竖屏失败")
+            print("错误: 横屏转竖屏失败")
+            return False
+            
+    except Exception as e:
+        logger.exception(f"横屏转竖屏出错: {str(e)}")
+        print(f"\n错误: {str(e)}")
+        print("详细信息请查看日志文件: video_silce.log")
+        return False
+
 def main():
     """主函数"""
     logger.info("开始视频智能剪辑流程")
@@ -665,9 +752,10 @@ def main():
         print("1. 数据准备，根据输入视频生成音频和transcripts的json文件")
         print("2. 构建RAG知识库，执行前请确保transcripts里有对应json文件")
         print("3. 调用API进行文本分析并进行视频剪辑功能")
+        print("4. 横屏转竖屏，将横屏视频转换为竖屏格式")
 
         while True:
-            branch = input("\n 请用数字1-3来选择操作或输入q来退出程序: ").strip()
+            branch = input("\n 请用数字1-4来选择操作或输入q来退出程序: ").strip()
             if branch.lower() == 'q':
                 break
 
@@ -679,8 +767,10 @@ def main():
                     data_processing()
                 elif branch_index == 3:
                     video_editing()
+                elif branch_index == 4:
+                    convert_to_vertical()
                 else:
-                    print(f"请输入 1-3 之间的数字。")
+                    print(f"请输入 1-4 之间的数字。")
 
         return
         
