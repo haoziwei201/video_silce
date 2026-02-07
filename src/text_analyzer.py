@@ -41,101 +41,186 @@ class TextAnalyzer:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-
-    def analyze_transcript(self, words, user_instruction) -> list:
-        """
-        分析转录文本，返回推荐的剪辑片段
-        参数Args:
-            words: 带时间戳的单词列表，也就是上一个python源文件的返回结果
-            user_instruction: 用户指令（如"找出最精彩的部分"）
-        返回Returns:
-            列表list: 要剪辑片段列表
-                每个元素字典格式: {
-                    "start_time": float,
-                    "end_time": float,
-                    "reason": str,
-                    "score": int
-                }
-        """
         
+        # 定义分类关键词库
+        self.keywords = { 
+            "instruction": ["注意", "切记", "必须", "不能", "确保", "要", "不要", "应该", "不应该", "一定要", "千万"], 
+            "action": ["拧", "焊", "切", "装", "拆", "按", "转", "推", "拉", "接", "固定", "安装"], 
+            "demonstration": ["展示", "演示", "看", "请看", "这样做", "这样操作", "示范", "给大家看"], 
+            "explanation": ["因为", "所以", "因此", "原理", "原因是", "由于", "意味着", "也就是说"], 
+            "question": ["吗", "什么", "为什么", "如何", "怎样", "是不是", "有没有", "？", "?", "谁", "哪里"], 
+            "review": ["回顾", "总结", "前面讲了", "刚才说了", "综上所述", "总的来说", "我们讲了", "已经学"], 
+            "transition": ["接下来", "下面", "然后", "接着", "之后", "下面我们", "接下来我们", "好", "那么"], 
+            "noise": ["嗯", "啊", "那个", "就是", "然后", "呃", "这个", "那个", "呃呃", "啊啊"] 
+        }
+        
+        # 定义处理方式映射
+        self.action_map = {
+            "instruction": {"action": "keep", "speed": 1.0, "desc": "重要知识点，完整保留"},
+            "action": {"action": "keep", "speed": 1.0, "desc": "实操精华，原速保留"},
+            "demonstration": {"action": "keep", "speed": 1.25, "desc": "展示过程，略快"},
+            "explanation": {"action": "compress", "speed": 1.5, "desc": "原理解释，压缩"},
+            "question": {"action": "keep", "speed": 1.0, "desc": "互动环节，保留"},
+            "review": {"action": "compress", "speed": 2.0, "desc": "回顾内容，总结或快进"},
+            "transition": {"action": "fast_forward", "speed": 3.0, "desc": "过渡内容，快进"},
+            "noise": {"action": "delete", "speed": 0, "desc": "无效片段，删除"}
+        }
+
+    def _classify_rule_based(self, text):
+        """基于规则的简单分类"""
+        for label, keywords in self.keywords.items():
+            for kw in keywords:
+                if kw in text:
+                    return label
+        return None
+
+    def analyze_transcript(self, words, user_instruction=None) -> list:
+        """
+        混合分类策略分析转录文本
+        """
         if not self.api_key:
              print("Error: Missing DEEPSEEK_API_KEY. Cannot analyze transcript.")
              return []
 
-        # 1. 准备发给 AI 的素材
-        context_text = ""
-        for item in words:
-            # 兼容新旧格式
+        print("正在进行混合策略文本分析...")
+        
+        segments = []
+        uncertain_indices = []
+        
+        # 1. 预处理和规则分类
+        for i, item in enumerate(words):
+            # 兼容新旧格式提取内容
             if "time_range" in item:
-                # 新格式
                 start = item["time_range"][0]
                 end = item["time_range"][1]
                 content = item.get("content", "")
-                visual = item.get("visual_context", "")
-                type_ = item.get("type", "speech")
-                
-                line = f"[{start:.2f}-{end:.2f}] ({type_}) {content}"
-                if visual:
-                    line += f" | {visual}"
-                context_text += line + "\n"
             else:
-                # 旧格式
                 start = item.get("start", 0)
                 end = item.get("end", 0)
-                t = item.get("text", item.get("word", ""))
-                context_text += f"[{start}-{end}] {t}\n"
-
-        # 2. 构造 Prompt
-        if not MAIN_PROMPT_TEMPLATE:
-             print("Error: Prompt template not loaded.")
-             return []
-
-        prompt = MAIN_PROMPT_TEMPLATE.format(
-            user_instruction=user_instruction,
-            context_text=context_text
-        )
-
-        # 3. 调用 DeepSeek API
-        # 注意：config.py 中 BASE_URL 通常不带 /chat/completions 后缀，需要拼接
-        url = f"{self.base_url}/chat/completions"
+                content = item.get("text", item.get("word", ""))
+            
+            label = self._classify_rule_based(content)
+            
+            segments.append({
+                "id": i,
+                "start": start,
+                "end": end,
+                "text": content,
+                "label": label
+            })
+            
+            if not label:
+                uncertain_indices.append(i)
         
+        print(f"规则分类完成: {len(segments) - len(uncertain_indices)}/{len(segments)} 已分类")
+        
+        # 2. LLM 补充分类 (如果有未分类的)
+        if uncertain_indices:
+            print(f"正在调用 LLM 对剩余 {len(uncertain_indices)} 个片段进行分类...")
+            # 构造待分类的文本上下文
+            # 为了节省 token，我们只发送未分类片段及其上下文，或者分批发送
+            # 这里简单起见，构建一个包含 ID 和 文本 的列表发给 LLM
+            
+            items_to_classify = []
+            for idx in uncertain_indices:
+                items_to_classify.append({
+                    "id": idx,
+                    "text": segments[idx]["text"]
+                })
+            
+            # 构造 Prompt
+            prompt = f"""
+你是一个专业的视频剪辑助手。请对以下视频字幕片段进行分类。
+分类标签及其定义如下：
+- instruction: 重要知识点，不能省略 (关键词: 注意, 切记, 必须...)
+- action: 实操精华，需要看清每个步骤 (关键词: 拧, 焊, 装, 拆...)
+- demonstration: 展示过程，不需要逐帧看 (关键词: 展示, 演示, 看...)
+- explanation: 原理解释 (关键词: 因为, 所以, 原理...)
+- question: 互动环节 (关键词: 为什么, 如何, 吗...)
+- review: 回顾内容 (关键词: 回顾, 总结...)
+- transition: 过渡内容 (关键词: 接下来, 然后...)
+- noise: 无效片段 (关键词: 嗯, 啊, 呃...)
+
+请根据文本内容判断最合适的标签。
+返回格式必须是合法的 JSON 列表，每项包含 "id" 和 "label"。
+例如: [{{"id": 1, "label": "instruction"}}, {{"id": 2, "label": "noise"}}]
+
+待分类片段:
+{json.dumps(items_to_classify, ensure_ascii=False)}
+"""
+            # 调用 LLM
+            try:
+                llm_results = self._call_llm(prompt)
+                if llm_results and isinstance(llm_results, list):
+                    for res in llm_results:
+                        idx = res.get("id")
+                        label = res.get("label")
+                        if idx is not None and label in self.action_map and idx < len(segments):
+                            segments[idx]["label"] = label
+            except Exception as e:
+                print(f"LLM 分类失败: {e}")
+                # 兜底：如果 LLM 失败，默认标记为 explanation
+                pass
+
+        # 3. 生成最终剪辑列表
+        final_clips = []
+        for seg in segments:
+            label = seg.get("label")
+            if not label:
+                label = "explanation" # 默认兜底
+            
+            action_info = self.action_map.get(label, self.action_map["explanation"])
+            
+            if action_info["action"] == "delete":
+                continue
+            
+            # 构造输出格式，兼容原有结构
+            final_clips.append({
+                "start_time": seg["start"],
+                "end_time": seg["end"],
+                "label": label,
+                "reason": f"[{label}] {action_info['desc']}",
+                "score": 10 if label in ["instruction", "action"] else 5, # 简单评分
+                "speed": action_info["speed"],
+                "text": seg["text"]
+            })
+            
+        return final_clips
+
+    def _call_llm(self, prompt):
+        """调用 LLM 的辅助函数"""
+        url = f"{self.base_url}/chat/completions"
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": "You are a helpful video editing assistant. Always output valid JSON."},
+                {"role": "system", "content": "You are a helpful JSON assistant."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.1,
-            "stream": False
+            "stream": False,
+            "response_format": {"type": "json_object"}
         }
         
-        print(f"正在调用 DeepSeek API 分析字幕...")
+        response = requests.post(url, headers=self.headers, json=payload, timeout=60)
+        response.raise_for_status()
+        content = response.json()['choices'][0]['message']['content']
         
+        # 简单的 JSON 清洗和解析
         try:
-            response = requests.post(url, headers=self.headers, json=payload, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-            content = result['choices'][0]['message']['content']
-            
-            # 4. 解析 AI 返回的 JSON 字符串
-            clean_response = content.strip()
-            
-            # 尝试使用正则提取 JSON 列表
-            match = re.search(r'\[.*\]', clean_response, re.DOTALL)
-            if match:
-                clean_response = match.group()
+            # 尝试找到 JSON 列表的开始和结束
+            start = content.find('[')
+            end = content.rfind(']') + 1
+            if start != -1 and end != -1:
+                json_str = content[start:end]
+                return json.loads(json_str)
             else:
-                # 如果正则没匹配到，尝试简单的 Markdown 清理作为备选
-                if clean_response.startswith("```"):
-                    clean_response = clean_response.split("\n", 1)[1]
-                    if clean_response.endswith("```"):
-                        clean_response = clean_response.rsplit("\n", 1)[0]
-            
-            result_list = json.loads(clean_response)
-            return result_list
-            
-        except Exception as e:
-            print(f"API 调用或解析失败: {e}")
+                # 也许是 { "items": [...] } 格式
+                data = json.loads(content)
+                if isinstance(data, list): return data
+                for key in data:
+                    if isinstance(data[key], list): return data[key]
+                return []
+        except:
             return []
 '''
 # 测试代码
