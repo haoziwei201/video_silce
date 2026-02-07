@@ -474,6 +474,32 @@ def rag_building():
             print("RAG构建失败。")
             return False
 
+    while True:
+        query = input("\n请输入查询指令 (例如: '找出切肉的画面'): ").strip()
+        if query.lower() == 'q':
+            break
+        
+        if not query:
+            continue
+            
+        try:
+            print(f"正在检索: '{query}'...")
+            results = vkb.search(query, top_k=3)
+            
+            print("\n检索结果:")
+            if results and 'documents' in results and results['documents']:
+                for i, doc in enumerate(results['documents'][0]):
+                    if i < len(results['metadatas'][0]):
+                        meta = results['metadatas'][0][i]
+                        print(f"  {i+1}. [{meta['start']:.1f}s - {meta['end']:.1f}s] {doc}")
+                    else:
+                        print(f"  {i+1}. {doc}")
+            else:
+                print("  未找到相关结果")
+                
+        except Exception as e:
+            print(f"检索出错: {e}")
+
 def video_editing():
     logger.info("开始执行视频剪辑及文本分析功能")
 
@@ -676,3 +702,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"程序出现未预期的错误: {str(e)}")
         logging.exception("未预期的错误")
+
