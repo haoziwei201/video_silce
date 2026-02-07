@@ -2,7 +2,7 @@ import os
 import sys
 import numpy as np
 import cv2
-from moviepy import VideoFileClip, concatenate_videoclips
+from moviepy import VideoFileClip, concatenate_videoclips, CompositeVideoClip
 
 # 将项目根目录添加到系统路径，以便导入 config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -428,6 +428,118 @@ class VideoProcessor:
         # 简单起见，这里仅打印提示
         print("process_video is deprecated in this version. Please use main.py workflow.")
         return None
+
+    def convert_to_vertical(self, video_path, output_path=None, blur_radius=25):
+        """
+        将横屏视频转换为竖屏视频
+        将原视频画面放大并模糊处理，作为背景填充，原始视频居中放置
+        
+        参数Args:
+            video_path: 输入视频文件路径
+            output_path: 输出视频文件路径（可选，默认为原文件名加_vertical后缀）
+            blur_radius: 模糊半径，默认为25
+        返回Returns:
+            bool: 是否成功
+        """
+        try:
+            print(f"正在处理视频: {video_path}")
+            
+            # 确保目录存在
+            if output_path is None:
+                video_dir = os.path.dirname(video_path)
+                video_name = os.path.splitext(os.path.basename(video_path))[0]
+                output_path = os.path.join(video_dir, f"{video_name}_vertical.mp4")
+            
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            # 加载视频
+            video = VideoFileClip(video_path)
+            
+            # 获取视频尺寸
+            w, h = video.size
+            print(f"原始视频尺寸: {w}x{h}")
+            
+            # 检查是否需要转换（横屏：宽度 > 高度）
+            if w <= h:
+                print("视频已经是竖屏，无需转换")
+                if output_path != video_path:
+                    video.write_videofile(
+                        output_path,
+                        codec="libx264",
+                        audio_codec="aac",
+                        fps=video.fps,
+                        logger=None
+                    )
+                video.close()
+                return True
+            
+            # 计算竖屏尺寸（9:16比例）
+            # 保持高度不变，宽度调整为高度的9/16
+            target_height = h
+            target_width = int(h * 9 / 16)
+            
+            # 如果计算出的宽度小于原始宽度，则以原始宽度为基准
+            if target_width < w:
+                target_width = w
+                target_height = int(w * 16 / 9)
+            
+            print(f"目标视频尺寸: {target_width}x{target_height}")
+            
+            # 计算缩放比例，使原始视频放大以填充竖屏
+            scale_factor = max(target_width / w, target_height / h)
+            scaled_w = int(w * scale_factor)
+            scaled_h = int(h * scale_factor)
+            
+            print(f"放大比例: {scale_factor:.2f}")
+            print(f"放大后尺寸: {scaled_w}x{scaled_h}")
+            
+            # 创建背景视频（放大并模糊）
+            def make_blur_background(frame):
+                # 使用OpenCV进行模糊处理
+                blurred = cv2.GaussianBlur(frame, (blur_radius, blur_radius), 0)
+                return blurred
+            
+            # 创建放大并模糊的背景
+            blurred_video = video.resized((scaled_w, scaled_h))
+            blurred_video = blurred_video.image_transform(make_blur_background)
+            
+            # 调整背景尺寸到目标尺寸
+            background = blurred_video.resized((target_width, target_height))
+            
+            # 计算原始视频在画布上的位置（居中）
+            x_offset = (target_width - w) // 2
+            y_offset = (target_height - h) // 2
+            
+            print(f"视频居中位置: ({x_offset}, {y_offset})")
+            
+            # 使用 CompositeVideoClip 合成视频
+            final_video = CompositeVideoClip([background, video.with_position((x_offset, y_offset))], size=(target_width, target_height))
+            
+            # 导出视频
+            final_video.write_videofile(
+                output_path,
+                codec="libx264",
+                audio_codec="aac",
+                fps=video.fps,
+                preset="medium",
+                threads=4,
+                logger=None
+            )
+            
+            # 关闭所有视频对象
+            video.close()
+            blurred_video.close()
+            background.close()
+            final_video.close()
+            
+            print(f"✓ 竖屏视频已生成: {output_path}")
+            return True
+                
+        except Exception as e:
+            print(f"横屏转竖屏失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
 # 测试代码
 if __name__ == "__main__":
