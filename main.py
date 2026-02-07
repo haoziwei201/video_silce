@@ -2,6 +2,7 @@
 main.py - 视频智能剪辑工具主程序
 """
 
+
 import os
 import sys
 import json
@@ -702,4 +703,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"程序出现未预期的错误: {str(e)}")
         logging.exception("未预期的错误")
+
 
