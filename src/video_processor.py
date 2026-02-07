@@ -1,5 +1,7 @@
 import os
 import sys
+import numpy as np
+import cv2
 from moviepy import VideoFileClip, concatenate_videoclips
 
 # 将项目根目录添加到系统路径，以便导入 config
@@ -102,61 +104,249 @@ class VideoProcessor:
 
     def extract_keyframes(self, video_path, output_dir, interval=2.0):
         """
+        [已弃用] 建议使用 extract_smart_keyframes
         每隔一定时间提取关键帧
+        """
+        return self.extract_smart_keyframes(video_path, output_dir)
+
+    def extract_smart_keyframes(self, video_path, output_dir, max_gap=30):
+        """
+        智能提取关键帧：场景检测 + PPT检测 + 运动检测 + 兜底覆盖
         Args:
             video_path: 视频路径
             output_dir: 输出目录
-            interval: 间隔时间(秒)
+            max_gap: 兜底策略的最大时间间隔（秒）
         Returns:
             list: 提取的关键帧文件路径列表 [{"time": float, "path": str}]
         """
         keyframes = []
         try:
             os.makedirs(output_dir, exist_ok=True)
-            # 使用上下文管理器确保资源释放
-            with VideoFileClip(video_path) as clip:
-                duration = clip.duration
-                # 使用 numpy arange 或简单的 while 循环来支持浮点间隔
-                current_time = 0.0
-                while current_time < duration:
-                    frame_name = f"frame_{int(current_time*1000):06d}.jpg"
-                    frame_path = os.path.join(output_dir, frame_name)
+            print(f"开始智能关键帧提取: {video_path}")
+            
+            # 1. 场景检测
+            print("  - [阶段1] 正在进行场景检测...")
+            scenes = self._detect_scenes_opencv(video_path)
+            print(f"    检测到 {len(scenes)} 个场景")
+            
+            extracted_times = set()
+            
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                print("Error: Could not open video for reading.")
+                return []
+                
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration = total_frames / fps if fps > 0 else 0
+            
+            # 处理场景帧
+            for scene in scenes:
+                scene_start = scene['start_time']
+                scene_end = scene['end_time']
+                scene_duration = scene_end - scene_start
+                
+                # 中间截一张
+                mid_time = scene_start + scene_duration / 2
+                self._add_keyframe(cap, mid_time, output_dir, keyframes, extracted_times)
+                
+                # 长场景额外截取
+                if scene_duration > 15:
+                    self._add_keyframe(cap, scene_start + scene_duration/3, output_dir, keyframes, extracted_times)
+                    self._add_keyframe(cap, scene_start + 2*scene_duration/3, output_dir, keyframes, extracted_times)
+
+            # 2 & 3. 检测 PPT/文字 和 运动检测 (采样检测)
+            print("  - [阶段2&3] 正在检测文字区域(OCR预处理)和运动变化...")
+            # 为了效率，每0.5秒采样一帧
+            sample_interval = 0.5 
+            curr_time = 0.0
+            
+            prev_frame_gray = None
+            last_motion_time = -100 # 上一次因运动提取的时间
+            
+            while curr_time < duration:
+                # 跳过已经提取的时间点附近，但仍需读取帧以更新 prev_frame
+                is_extracted = False
+                for t in extracted_times:
+                    if abs(t - curr_time) < 0.2: # 稍微放宽一点
+                        is_extracted = True
+                        break
+                
+                cap.set(cv2.CAP_PROP_POS_MSEC, curr_time * 1000)
+                ret, frame = cap.read()
+                if not ret:
+                    break
                     
-                    # 保存帧
-                    clip.save_frame(frame_path, t=current_time)
-                    keyframes.append({"time": current_time, "path": frame_path})
-                    
-                    current_time += interval
-                    
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                
+                # 如果当前时间点已经被提取过，只更新prev_frame并继续
+                if is_extracted:
+                    prev_frame_gray = gray
+                    curr_time += sample_interval
+                    continue
+
+                # A. PPT/文字检测
+                if self._detect_bright_rectangle(frame):
+                    self._add_keyframe(cap, curr_time, output_dir, keyframes, extracted_times, prefix="ppt_")
+                    last_motion_time = curr_time # PPT也算是一种视觉变化点
+                
+                # B. 运动检测
+                elif prev_frame_gray is not None:
+                    # 只有当距离上次运动提取超过2秒时才再次提取，避免连续运动产生大量帧
+                    if curr_time - last_motion_time > 2.0:
+                        if self._detect_motion_simple(prev_frame_gray, gray):
+                            self._add_keyframe(cap, curr_time, output_dir, keyframes, extracted_times, prefix="motion_")
+                            last_motion_time = curr_time
+
+                prev_frame_gray = gray
+                curr_time += sample_interval
+
+            # 4. 兜底覆盖
+            print("  - [兜底] 检查覆盖率...")
+            sorted_times = sorted(list(extracted_times))
+            if not sorted_times:
+                self._add_keyframe(cap, 0.0, output_dir, keyframes, extracted_times)
+                sorted_times = [0.0]
+            
+            # 检查开头
+            if sorted_times[0] > max_gap:
+                 self._add_keyframe(cap, 0.0, output_dir, keyframes, extracted_times)
+            
+            # 检查中间空隙
+            sorted_times = sorted(list(extracted_times))
+            for i in range(len(sorted_times) - 1):
+                curr = sorted_times[i]
+                next_t = sorted_times[i+1]
+                if next_t - curr > max_gap:
+                    fill_time = curr + (next_t - curr) / 2
+                    self._add_keyframe(cap, fill_time, output_dir, keyframes, extracted_times, prefix="fill_")
+            
+            # 检查结尾
+            if duration - sorted_times[-1] > max_gap:
+                self._add_keyframe(cap, duration - 1.0, output_dir, keyframes, extracted_times)
+
+            cap.release()
+            
+            # 按时间排序
+            keyframes.sort(key=lambda x: x['time'])
             return keyframes
+
         except Exception as e:
-            print(f"提取关键帧失败: {e}")
+            print(f"智能提取关键帧失败: {e}")
+            import traceback
+            traceback.print_exc()
             return []
+
+    def _add_keyframe(self, cap, time_sec, output_dir, keyframes_list, extracted_times_set, prefix="frame_"):
+        """辅助函数：保存关键帧"""
+        # 简单去重
+        for t in extracted_times_set:
+            if abs(t - time_sec) < 0.2:
+                return
+
+        cap.set(cv2.CAP_PROP_POS_MSEC, time_sec * 1000)
+        ret, frame = cap.read()
+        if ret:
+            frame_name = f"{prefix}{int(time_sec*1000):06d}.jpg"
+            frame_path = os.path.join(output_dir, frame_name)
+            cv2.imwrite(frame_path, frame)
+            keyframes_list.append({"time": time_sec, "path": frame_path})
+            extracted_times_set.add(time_sec)
+
+    def _detect_scenes_opencv(self, video_path, threshold=0.7):
+        """场景检测：基于HSV直方图"""
+        scenes = []
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return []
+            
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        prev_hist = None
+        scene_start_frame = 0
+        curr_frame = 0
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            if curr_frame % 5 != 0: # 降采样
+                curr_frame += 1
+                continue
+                
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            hist = cv2.calcHist([hsv], [0], None, [50], [0, 180])
+            cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+            
+            if prev_hist is not None:
+                score = cv2.compareHist(prev_hist, hist, cv2.HISTCMP_CORREL)
+                if score < threshold:
+                    scenes.append({
+                        "start_time": scene_start_frame / fps,
+                        "end_time": curr_frame / fps
+                    })
+                    scene_start_frame = curr_frame
+            
+            prev_hist = hist
+            curr_frame += 1
+            
+        # 最后一个场景
+        total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        if scene_start_frame < total_frames:
+            scenes.append({
+                "start_time": scene_start_frame / fps,
+                "end_time": total_frames / fps
+            })
+            
+        cap.release()
+        return scenes
+
+    def _detect_bright_rectangle(self, frame):
+        """PPT检测：检测亮色矩形"""
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            height, width = frame.shape[:2]
+            frame_area = width * height
+            
+            for cnt in contours:
+                epsilon = 0.02 * cv2.arcLength(cnt, True)
+                approx = cv2.approxPolyDP(cnt, epsilon, True)
+                if len(approx) == 4:
+                    area = cv2.contourArea(cnt)
+                    if frame_area * 0.2 < area < frame_area * 0.95:
+                        return True
+            return False
+        except Exception:
+            return False
+
+    def _detect_motion_simple(self, prev_gray, curr_gray, threshold=30):
+        """运动检测：帧间差分"""
+        try:
+            diff = cv2.absdiff(prev_gray, curr_gray)
+            # 统计变化超过阈值的像素比例
+            changed_ratio = np.sum(diff > threshold) / diff.size
+            return changed_ratio > 0.05  # 5%的像素发生变化视为有运动
+        except Exception:
+            return False
+
+    def select_key_clips(self, analyzed_segments, max_duration=300):
         """
         根据评分选择关键片段
-        参数Args:
-            analyzed_segments: 分析后的片段列表，每个元素包含 start_time, end_time, score, reason
-            max_duration: 最大视频时长（秒），默认为5分钟
-        返回Returns:
-            选择的关键片段列表
         """
-        # 按评分降序排序
         sorted_segments = sorted(analyzed_segments, key=lambda x: x.get('score', 0), reverse=True)
-        
         selected_clips = []
         total_duration = 0
-        
         for segment in sorted_segments:
             segment_duration = segment['end_time'] - segment['start_time']
-            # 确保片段时长合理，且总时长不超过限制
             if segment_duration > 0 and total_duration + segment_duration <= max_duration:
                 selected_clips.append(segment)
                 total_duration += segment_duration
-        
-        # 按时间顺序排序，确保视频连贯性
         selected_clips.sort(key=lambda x: x['start_time'])
-        
         return selected_clips
+
     
     def combine_clips(self, clip_paths, output_filename="output_video.mp4"):
         """
