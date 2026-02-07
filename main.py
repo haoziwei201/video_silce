@@ -201,12 +201,20 @@ async def analyze_keyframes_async(visual_recognition, keyframes_to_analyze):
     
     async def bounded_analyze(kf):
         async with sem:
-            return await visual_recognition.analyze_image_async(kf['path'])
+            # 批量处理时关闭自动保存，避免频繁IO导致串行化
+            return await visual_recognition.analyze_image_async(kf['path'], auto_save=False)
 
     for kf in keyframes_to_analyze:
         tasks.append(bounded_analyze(kf))
     
-    return await asyncio.gather(*tasks)
+    results = await asyncio.gather(*tasks)
+    
+    # 批量处理完成后，统一保存一次缓存
+    if hasattr(visual_recognition, 'save_cache'):
+        logger.info("批量分析完成，正在保存缓存...")
+        await visual_recognition.save_cache()
+        
+    return results
 
 def data_processing():
     try:
@@ -306,11 +314,99 @@ def data_processing():
         print("开始异步调用视觉模型分析关键帧...")
         
         try:
-            descriptions = asyncio.run(analyze_keyframes_async(visual_recognition, unique_keyframes))
+            # 定义异步处理函数
+            async def process_images_async(visual_recognition, unique_keyframes):
+                from tqdm.asyncio import tqdm
+                
+                # 分批处理配置
+                BATCH_SIZE = 50  # 每批处理50张图片
+                total_keyframes = len(unique_keyframes)
+                descriptions = [None] * total_keyframes
+                
+                logger.info(f"共 {total_keyframes} 帧，将分为 {total_keyframes // BATCH_SIZE + 1} 批进行处理")
+                
+                # 初始化并发信号量，限制并发数为15
+                sem = asyncio.Semaphore(15)
+                
+                # 定义内部任务函数
+                async def bounded_analyze(kf):
+                    async with sem:
+                        # 批量处理时关闭自动保存
+                        return await visual_recognition.analyze_image_async(kf['path'], auto_save=False)
+                
+                # 创建所有任务
+                tasks = [bounded_analyze(kf) for kf in unique_keyframes]
+                
+                # 使用 tqdm 显示进度条
+                print(f"开始分析 {total_keyframes} 个关键帧...")
+                results = []
+                for f in tqdm.as_completed(tasks, total=total_keyframes, desc="视觉分析进度", unit="帧"):
+                    result = await f
+                    results.append(result)
+
+                # 注意：as_completed 返回顺序是不确定的，我们需要保持原始顺序
+                # 因此我们需要重新组织逻辑：不直接 append，而是用 gather 带 tqdm
+                
+                # 重新实现：为了保持顺序且有进度条，我们可以用 gather 并发，但手动更新进度条
+                # 或者更简单：直接对 gather 任务列表使用 tqdm 是不行的，因为 gather 等待所有完成。
+                # 更好的方式是：使用 asyncio.as_completed 但这会打乱顺序。
+                # 最好的方式：包装一下任务，让任务完成后更新进度条，最后还是用 gather 等待所有以保持顺序。
+                
+                pass 
+                
+            # 重新编写 process_images_async 以支持有序结果 + 实时进度条
+            async def process_images_async_with_progress(visual_recognition, unique_keyframes):
+                from tqdm import tqdm
+                
+                total_keyframes = len(unique_keyframes)
+                descriptions = [None] * total_keyframes
+                sem = asyncio.Semaphore(15)
+                pbar = tqdm(total=total_keyframes, desc="视觉分析进度", unit="帧")
+                
+                async def bounded_analyze_wrapper(index, kf):
+                    async with sem:
+                        try:
+                            res = await visual_recognition.analyze_image_async(kf['path'], auto_save=False)
+                        except Exception as e:
+                            logger.error(f"Error analyzing frame {index}: {e}")
+                            res = None
+                        finally:
+                            pbar.update(1)
+                        return index, res
+
+                # 创建所有任务，带索引以便后续排序
+                tasks = [bounded_analyze_wrapper(i, kf) for i, kf in enumerate(unique_keyframes)]
+                
+                # 分批提交任务以避免创建过多 Task 对象（可选，但为了防止 Task 太多炸内存，还是分批好，或者一次性提交也可以，Python处理几千个Task没问题）
+                # 这里我们一次性提交给 gather，利用 Semaphore 控制并发
+                
+                # 注意：为了让进度条动起来，我们需要 task 完成时回调，或者用 as_completed
+                # 但我们需要最终结果是有序的。
+                # 方案：使用 as_completed 获取结果，结果中包含 index，然后填入列表。
+                
+                for task in asyncio.as_completed(tasks):
+                    idx, res = await task
+                    descriptions[idx] = res
+                    
+                    # 每完成 50 个保存一次缓存 (可选优化)
+                    if (pbar.n) % 50 == 0 and hasattr(visual_recognition, 'save_cache'):
+                         await visual_recognition.save_cache()
+                
+                pbar.close()
+                
+                # 最后保存一次缓存
+                if hasattr(visual_recognition, 'save_cache'):
+                    await visual_recognition.save_cache()
+                    
+                return descriptions
+
+            # 运行异步处理
+            descriptions = asyncio.run(process_images_async_with_progress(visual_recognition, unique_keyframes))
+                    
         except Exception as e:
             logger.error(f"异步分析出错: {e}")
             print(f"异步分析出错: {e}")
-            descriptions = [None] * len(unique_keyframes)
+            # 如果出错，descriptions 可能部分为 None，后续逻辑会处理
 
         analyzed_count = 0
         for kf, description in zip(unique_keyframes, descriptions):

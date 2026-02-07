@@ -89,12 +89,18 @@ class VisualRecognition:
 
         return asyncio.run(self.analyze_image_async(image_path, prompt))
 
-    async def analyze_image_async(self, image_path, prompt="请详细描述这张图片的内容，包括场景、人物、动作和关键视觉元素。"):
+    async def save_cache(self):
+        """手动触发保存缓存到文件"""
+        async with self._cache_lock:
+            await self._save_cache_async()
+
+    async def analyze_image_async(self, image_path, prompt="请详细描述这张图片的内容，包括场景、人物、动作和关键视觉元素。", auto_save=True):
         """
         异步分析单张图片 (带缓存)
         Args:
             image_path: 图片路径
             prompt: 提示词
+            auto_save: 是否在分析完成后立即保存缓存文件。批量处理时建议设为False，处理完后手动调用save_cache()。
         Returns:
             str: 图片描述
         """
@@ -130,7 +136,7 @@ class VisualRecognition:
         ]
 
         try:
-            logger.info(f"Calling VL model asynchronously for {image_path}")
+            # logger.info(f"Calling VL model asynchronously for {image_path}")
             
             # 【核心修改】：使用 asyncio.to_thread 将同步的 SDK 调用放入线程池
             # 这样主线程就不会被卡住了
@@ -160,9 +166,12 @@ class VisualRecognition:
                 # 4. 写入缓存 (加锁防止并发写入冲突)
                 if result_text and file_hash:
                     cache_key = f"{file_hash}_{prompt}"
-                    async with self._cache_lock:
-                        self.cache[cache_key] = result_text
-                        await self._save_cache_async()
+                    # 更新内存缓存（原子操作，无需锁）
+                    self.cache[cache_key] = result_text
+                    
+                    if auto_save:
+                        async with self._cache_lock:
+                            await self._save_cache_async()
                 
                 return result_text
             else:
