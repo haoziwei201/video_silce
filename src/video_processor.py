@@ -429,20 +429,24 @@ class VideoProcessor:
         print("process_video is deprecated in this version. Please use main.py workflow.")
         return None
 
-    def convert_to_vertical(self, video_path, output_path=None, blur_radius=25):
+    def convert_to_vertical(self, video_path, output_path=None, method="solid", background_color=(0, 0, 0)):
         """
         将横屏视频转换为竖屏视频
-        将原视频画面放大并模糊处理，作为背景填充，原始视频居中放置
         
         参数Args:
             video_path: 输入视频文件路径
             output_path: 输出视频文件路径（可选，默认为原文件名加_vertical后缀）
-            blur_radius: 模糊半径，默认为25
+            method: 转换方法，可选值：
+                - "solid": 纯色背景（最快）
+                - "static": 静态背景（使用视频第一帧）
+                - "blur": 模糊背景（原始方法，较慢）
+            background_color: 当method="solid"时使用的背景颜色，格式为RGB元组，默认黑色
         返回Returns:
             bool: 是否成功
         """
         try:
             print(f"正在处理视频: {video_path}")
+            print(f"转换方法: {method}")
             
             # 确保目录存在
             if output_path is None:
@@ -485,32 +489,54 @@ class VideoProcessor:
             
             print(f"目标视频尺寸: {target_width}x{target_height}")
             
-            # 计算缩放比例，使原始视频放大以填充竖屏
-            scale_factor = max(target_width / w, target_height / h)
-            scaled_w = int(w * scale_factor)
-            scaled_h = int(h * scale_factor)
-            
-            print(f"放大比例: {scale_factor:.2f}")
-            print(f"放大后尺寸: {scaled_w}x{scaled_h}")
-            
-            # 创建背景视频（放大并模糊）
-            def make_blur_background(frame):
-                # 使用OpenCV进行模糊处理
-                blurred = cv2.GaussianBlur(frame, (blur_radius, blur_radius), 0)
-                return blurred
-            
-            # 创建放大并模糊的背景
-            blurred_video = video.resized((scaled_w, scaled_h))
-            blurred_video = blurred_video.image_transform(make_blur_background)
-            
-            # 调整背景尺寸到目标尺寸
-            background = blurred_video.resized((target_width, target_height))
-            
             # 计算原始视频在画布上的位置（居中）
             x_offset = (target_width - w) // 2
             y_offset = (target_height - h) // 2
             
             print(f"视频居中位置: ({x_offset}, {y_offset})")
+            
+            # 创建背景
+            if method == "solid":
+                # 纯色背景
+                print(f"使用纯色背景: {background_color}")
+                # 创建一个纯色的静态帧
+                from moviepy.video.VideoClip import ColorClip
+                background = ColorClip(size=(target_width, target_height), color=background_color, duration=video.duration)
+            
+            elif method == "static":
+                # 静态背景（使用视频第一帧）
+                print("使用静态背景（视频第一帧）")
+                # 获取第一帧
+                first_frame = video.get_frame(0)
+                # 创建静态背景
+                from moviepy.video.VideoClip import ImageClip
+                background = ImageClip(first_frame).set_duration(video.duration)
+                # 调整背景尺寸
+                background = background.resize((target_width, target_height))
+            
+            else:  # blur 或其他
+                # 原始模糊背景方法
+                print("使用模糊背景")
+                # 计算缩放比例，使原始视频放大以填充竖屏
+                scale_factor = max(target_width / w, target_height / h)
+                scaled_w = int(w * scale_factor)
+                scaled_h = int(h * scale_factor)
+                
+                print(f"放大比例: {scale_factor:.2f}")
+                print(f"放大后尺寸: {scaled_w}x{scaled_h}")
+                
+                # 创建背景视频（放大并模糊）
+                def make_blur_background(frame):
+                    # 使用OpenCV进行模糊处理
+                    blurred = cv2.GaussianBlur(frame, (25, 25), 0)
+                    return blurred
+                
+                # 创建放大并模糊的背景
+                blurred_video = video.resized((scaled_w, scaled_h))
+                blurred_video = blurred_video.image_transform(make_blur_background)
+                
+                # 调整背景尺寸到目标尺寸
+                background = blurred_video.resized((target_width, target_height))
             
             # 使用 CompositeVideoClip 合成视频
             final_video = CompositeVideoClip([background, video.with_position((x_offset, y_offset))], size=(target_width, target_height))
@@ -528,7 +554,6 @@ class VideoProcessor:
             
             # 关闭所有视频对象
             video.close()
-            blurred_video.close()
             background.close()
             final_video.close()
             
