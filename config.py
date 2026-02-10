@@ -28,7 +28,9 @@ SLICE_VIDEO_DIR = os.path.join(BASE_DIR, "data", "slice_video")
 ANALYSIS_RESULTS_DIR = os.path.join(BASE_DIR, "data", "analysis_results")
 TRANSCRIPTS_DIR = os.path.join(BASE_DIR, "data", "transcripts")
 KEYFRAMES_DIR = os.path.join(BASE_DIR, "data", "keyframes")
+RAGSCRIPTS_DIR = os.path.join(BASE_DIR, "data", "ragscripts")
 
 # 确保目录存在
 for directory in [INPUT_VIDEO_DIR, OUTPUT_VIDEO_DIR, PROCESSED_AUDIO_DIR, SLICE_VIDEO_DIR, ANALYSIS_RESULTS_DIR, TRANSCRIPTS_DIR, KEYFRAMES_DIR]:
     os.makedirs(directory, exist_ok=True)
+

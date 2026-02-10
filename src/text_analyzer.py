@@ -76,6 +76,14 @@ class TextAnalyzer:
                     return label
         return None
 
+    def analyze_transcript(self, words, user_instruction=None):
+        """同步入口函数，调用异步实现"""
+        try:
+            return asyncio.run(self.analyze_transcript_async(words, user_instruction))
+        except Exception as e:
+            print(f"Error in analyze_transcript: {e}")
+            return []
+
     async def analyze_transcript_async(self, words, user_instruction=None) -> list:
         """
         混合分类策略分析转录文本
@@ -129,13 +137,25 @@ class TextAnalyzer:
             
             # 分批处理
             batch_size = 20  # 每批20个片段
-            tasks = []
-            for i in range(0, len(items_to_classify), batch_size):
-                batch = items_to_classify[i:i+batch_size]
-                prompt = get_classify_segments_prompt(batch)
-                tasks.append(self._call_llm_async(prompt))
+            batches = [items_to_classify[i:i+batch_size] for i in range(0, len(items_to_classify), batch_size)]
             
-            llm_results_list = await asyncio.gather(*tasks)
+            # 限制并发数，避免 API 限流
+            sem = asyncio.Semaphore(10)
+            
+            async def process_batch(batch):
+                async with sem:
+                    prompt = get_classify_segments_prompt(batch)
+                    return await self._call_llm_async(prompt)
+
+            tasks = [process_batch(b) for b in batches]
+            
+            # 使用 tqdm 显示进度
+            try:
+                from tqdm.asyncio import tqdm as async_tqdm
+                llm_results_list = await async_tqdm.gather(*tasks, desc="LLM分析进度", unit="batch")
+            except ImportError:
+                print("tqdm not found, running without progress bar")
+                llm_results_list = await asyncio.gather(*tasks)
             
             for llm_results in llm_results_list:
                 if llm_results and isinstance(llm_results, list):
