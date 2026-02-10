@@ -249,16 +249,9 @@ class VideoProcessor:
         if ret:
             frame_name = f"{prefix}{int(time_sec*1000):06d}.jpg"
             frame_path = os.path.join(output_dir, frame_name)
-            try:
-                is_success, buffer = cv2.imencode(".jpg", frame)
-                if is_success:
-                    buffer.tofile(frame_path)
-                    keyframes_list.append({"time": time_sec, "path": frame_path})
-                    extracted_times_set.add(time_sec)
-                else:
-                    print(f"Error encoding frame: {frame_path}")
-            except Exception as e:
-                print(f"Error writing frame {frame_path}: {e}")
+            cv2.imwrite(frame_path, frame)
+            keyframes_list.append({"time": time_sec, "path": frame_path})
+            extracted_times_set.add(time_sec)
 
     def _detect_scenes_opencv(self, video_path, threshold=0.7):
         """场景检测：基于HSV直方图"""
@@ -438,7 +431,7 @@ class VideoProcessor:
 
     def convert_to_vertical(self, video_path, output_path=None, method="solid", background_color=(0, 0, 0)):
         """
-        将横屏视频转换为竖屏视频
+        将横屏视频转换为竖屏视频（增强版）
         
         参数Args:
             video_path: 输入视频文件路径
@@ -479,9 +472,22 @@ class VideoProcessor:
                         codec="libx264",
                         audio_codec="aac",
                         fps=video.fps,
-                        logger=None
+                        logger="bar"
                     )
                 video.close()
+                
+                # 强制刷新文件系统
+                self._force_file_sync(output_path)
+                
+                # 验证文件可访问性
+                is_ready = self._verify_video_file_ready(output_path, timeout=10)
+                
+                if is_ready:
+                    print(f"✓ 视频转换完成并已确认可访问: {output_path}")
+                else:
+                    print(f"⚠ 视频已生成，但建议等待几秒后再访问: {output_path}")
+                    print("   文件位置: " + os.path.abspath(output_path))
+                
                 return True
             
             # 计算竖屏尺寸（9:16比例）
@@ -556,15 +562,28 @@ class VideoProcessor:
                 fps=video.fps,
                 preset="medium",
                 threads=4,
-                logger=None
+                logger="bar"
             )
             
-            # 关闭所有视频对象
+            # 关闭资源
             video.close()
             background.close()
             final_video.close()
             
-            print(f"✓ 竖屏视频已生成: {output_path}")
+            # ======== 新增的解决方案核心代码 ========
+            # 1. 强制刷新文件系统
+            self._force_file_sync(output_path)
+            
+            # 2. 验证文件可访问性
+            is_ready = self._verify_video_file_ready(output_path, timeout=10)
+            
+            if is_ready:
+                print(f"✓ 视频转换完成并已确认可访问: {output_path}")
+            else:
+                print(f"⚠ 视频已生成，但建议等待几秒后再访问: {output_path}")
+                print("   文件位置: " + os.path.abspath(output_path))
+            # ======================================
+            
             return True
                 
         except Exception as e:
@@ -572,6 +591,83 @@ class VideoProcessor:
             import traceback
             traceback.print_exc()
             return False
+
+    def _force_file_sync(self, filepath):
+        """强制同步文件到磁盘"""
+        import os
+        import sys
+        
+        try:
+            # 方法1: Python文件刷新
+            with open(filepath, 'ab') as f:
+                f.flush()
+                os.fsync(f.fileno())
+            
+            # 方法2: 操作系统级同步
+            if sys.platform == 'win32':
+                # Windows特定处理
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                handle = kernel32.CreateFileW(filepath, 0x40000000, 0, None, 3, 0, None)
+                if handle != -1:
+                    kernel32.FlushFileBuffers(handle)
+                    kernel32.CloseHandle(handle)
+            elif hasattr(os, 'sync'):
+                # Unix/Linux系统
+                os.sync()
+                
+        except Exception as e:
+            print(f"文件同步警告: {e}")
+
+    def _verify_video_file_ready(self, filepath, timeout=10):
+        """
+        验证视频文件是否完全可读
+        """
+        import time
+        import os
+        
+        start_time = time.time()
+        last_size = 0
+        stable_count = 0
+        
+        while time.time() - start_time < timeout:
+            try:
+                # 检查文件是否存在
+                if not os.path.exists(filepath):
+                    time.sleep(0.5)
+                    continue
+                
+                # 检查文件大小是否稳定
+                current_size = os.path.getsize(filepath)
+                
+                if current_size == last_size and current_size > 1024:  # 大于1KB
+                    stable_count += 1
+                else:
+                    stable_count = 0
+                    last_size = current_size
+                
+                # 如果文件大小稳定3次检查
+                if stable_count >= 3:
+                    # 尝试读取文件头确认视频格式
+                    with open(filepath, 'rb') as f:
+                        header = f.read(100)
+                        # 检查是否是有效的视频文件（MP4文件以"ftyp"开头）
+                        if header.startswith(b'\x00\x00\x00\x1cftyp'):
+                            return True
+                
+                time.sleep(0.5)
+                
+            except (IOError, OSError, PermissionError) as e:
+                time.sleep(1)
+        
+        # 超时后，尝试最后的简单检查
+        try:
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 1024 * 1024:  # 大于1MB
+                return True
+        except:
+            pass
+        
+        return False
 
 # 测试代码
 if __name__ == "__main__":
