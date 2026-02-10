@@ -15,6 +15,8 @@ except ImportError:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from config import DASHSCOPE_API_KEY, QWEN_VL_MODEL
 
+from src.prompts import VISUAL_ANALYSIS_PROMPT
+
 logger = logging.getLogger(__name__)
 
 class VisualRecognition:
@@ -71,7 +73,7 @@ class VisualRecognition:
             return None
 
     # 保留同步方法，防止旧代码调用报错
-    def analyze_image(self, image_path, prompt="请详细描述这张图片的内容，包括场景、人物、动作和关键视觉元素。"):
+    def analyze_image(self, image_path, prompt=VISUAL_ANALYSIS_PROMPT):
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -94,7 +96,7 @@ class VisualRecognition:
         async with self._cache_lock:
             await self._save_cache_async()
 
-    async def analyze_image_async(self, image_path, prompt="请详细描述这张图片的内容，包括场景、人物、动作和关键视觉元素。", auto_save=True):
+    async def analyze_image_async(self, image_path, prompt=VISUAL_ANALYSIS_PROMPT, auto_save=True):
         """
         异步分析单张图片 (带缓存)
         Args:

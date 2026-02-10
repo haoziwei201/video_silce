@@ -5,6 +5,8 @@ import requests
 from dotenv import load_dotenv
 from tqdm.asyncio import tqdm
 
+from prompts import get_summarize_visual_prompt
+
 # 加载环境变量
 load_dotenv()
 
@@ -31,19 +33,7 @@ class AsyncDataCleaner:
         if not long_text or len(long_text) < 50:
             return long_text
 
-        prompt = f"""
-    你是一个数据清洗助手。请将以下这段冗长的视频画面描述，精简为【一句话摘要】。
-    
-    要求：
-    1. 保留核心动作（如“切肉”、“拧螺丝”）。
-    2. 保留关键物体（如“菜刀”、“万用表”）。
-    3. 去除所有修饰性废话。
-    4. 字数控制在 50 字以内。
-    5. 直接输出摘要，不要包含任何解释。
-
-    待处理文本：
-    {long_text}
-    """
+        prompt = get_summarize_visual_prompt(long_text)
 
         async with self.semaphore:  # 控制并发数
             payload = {

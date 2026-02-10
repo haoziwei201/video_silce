@@ -3,6 +3,7 @@ import os
 import sys
 import requests
 import re
+import asyncio
 
 # 将项目根目录添加到系统路径，以便导入 config 和 src
 # 假设当前文件在 src/ 目录下，根目录是上一级
@@ -10,19 +11,20 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL
-    from src.prompts import MAIN_PROMPT_TEMPLATE
 except ImportError:
     # 尝试直接导入（针对不同运行环境的兼容处理）
     try:
         import config
         DEEPSEEK_API_KEY = config.DEEPSEEK_API_KEY
         DEEPSEEK_BASE_URL = config.DEEPSEEK_BASE_URL
-        from prompts import MAIN_PROMPT_TEMPLATE
     except ImportError as e:
         print(f"Warning: Import failed: {e}")
         DEEPSEEK_API_KEY = ""
         DEEPSEEK_BASE_URL = ""
-        MAIN_PROMPT_TEMPLATE = ""
+
+from prompts import get_classify_segments_prompt
+
+import httpx
 
 class TextAnalyzer:
     """文本分析器，使用DeepSeek API分析转录文本"""
@@ -74,7 +76,7 @@ class TextAnalyzer:
                     return label
         return None
 
-    def analyze_transcript(self, words, user_instruction=None) -> list:
+    async def analyze_transcript_async(self, words, user_instruction=None) -> list:
         """
         混合分类策略分析转录文本
         """
@@ -117,9 +119,6 @@ class TextAnalyzer:
         # 2. LLM 补充分类 (如果有未分类的)
         if uncertain_indices:
             print(f"正在调用 LLM 对剩余 {len(uncertain_indices)} 个片段进行分类...")
-            # 构造待分类的文本上下文
-            # 为了节省 token，我们只发送未分类片段及其上下文，或者分批发送
-            # 这里简单起见，构建一个包含 ID 和 文本 的列表发给 LLM
             
             items_to_classify = []
             for idx in uncertain_indices:
@@ -128,39 +127,23 @@ class TextAnalyzer:
                     "text": segments[idx]["text"]
                 })
             
-            # 构造 Prompt
-            prompt = f"""
-你是一个专业的视频剪辑助手。请对以下视频字幕片段进行分类。
-分类标签及其定义如下：
-- instruction: 重要知识点，不能省略 (关键词: 注意, 切记, 必须...)
-- action: 实操精华，需要看清每个步骤 (关键词: 拧, 焊, 装, 拆...)
-- demonstration: 展示过程，不需要逐帧看 (关键词: 展示, 演示, 看...)
-- explanation: 原理解释 (关键词: 因为, 所以, 原理...)
-- question: 互动环节 (关键词: 为什么, 如何, 吗...)
-- review: 回顾内容 (关键词: 回顾, 总结...)
-- transition: 过渡内容 (关键词: 接下来, 然后...)
-- noise: 无效片段 (关键词: 嗯, 啊, 呃...)
-
-请根据文本内容判断最合适的标签。
-返回格式必须是合法的 JSON 列表，每项包含 "id" 和 "label"。
-例如: [{{"id": 1, "label": "instruction"}}, {{"id": 2, "label": "noise"}}]
-
-待分类片段:
-{json.dumps(items_to_classify, ensure_ascii=False)}
-"""
-            # 调用 LLM
-            try:
-                llm_results = self._call_llm(prompt)
+            # 分批处理
+            batch_size = 20  # 每批20个片段
+            tasks = []
+            for i in range(0, len(items_to_classify), batch_size):
+                batch = items_to_classify[i:i+batch_size]
+                prompt = get_classify_segments_prompt(batch)
+                tasks.append(self._call_llm_async(prompt))
+            
+            llm_results_list = await asyncio.gather(*tasks)
+            
+            for llm_results in llm_results_list:
                 if llm_results and isinstance(llm_results, list):
                     for res in llm_results:
                         idx = res.get("id")
                         label = res.get("label")
                         if idx is not None and label in self.action_map and idx < len(segments):
                             segments[idx]["label"] = label
-            except Exception as e:
-                print(f"LLM 分类失败: {e}")
-                # 兜底：如果 LLM 失败，默认标记为 explanation
-                pass
 
         # 3. 生成最终剪辑列表
         final_clips = []
@@ -187,8 +170,8 @@ class TextAnalyzer:
             
         return final_clips
 
-    def _call_llm(self, prompt):
-        """调用 LLM 的辅助函数"""
+    async def _call_llm_async(self, prompt):
+        """异步调用 LLM 的辅助函数"""
         url = f"{self.base_url}/chat/completions"
         payload = {
             "model": "deepseek-chat",
@@ -201,27 +184,33 @@ class TextAnalyzer:
             "response_format": {"type": "json_object"}
         }
         
-        response = requests.post(url, headers=self.headers, json=payload, timeout=60)
-        response.raise_for_status()
-        content = response.json()['choices'][0]['message']['content']
-        
-        # 简单的 JSON 清洗和解析
-        try:
-            # 尝试找到 JSON 列表的开始和结束
-            start = content.find('[')
-            end = content.rfind(']') + 1
-            if start != -1 and end != -1:
-                json_str = content[start:end]
-                return json.loads(json_str)
-            else:
-                # 也许是 { "items": [...] } 格式
-                data = json.loads(content)
-                if isinstance(data, list): return data
-                for key in data:
-                    if isinstance(data[key], list): return data[key]
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(url, headers=self.headers, json=payload, timeout=60)
+                response.raise_for_status()
+                content = response.json()['choices'][0]['message']['content']
+                
+                # 简单的 JSON 清洗和解析
+                try:
+                    start = content.find('[')
+                    end = content.rfind(']') + 1
+                    if start != -1 and end != -1:
+                        json_str = content[start:end]
+                        return json.loads(json_str)
+                    else:
+                        data = json.loads(content)
+                        if isinstance(data, list): return data
+                        for key in data:
+                            if isinstance(data[key], list): return data[key]
+                        return []
+                except:
+                    return []
+            except httpx.ReadTimeout:
+                print("LLM call timed out.")
                 return []
-        except:
-            return []
+            except Exception as e:
+                print(f"LLM call failed: {e}")
+                return []
 '''
 # 测试代码
 if __name__ == "__main__":

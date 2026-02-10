@@ -1,34 +1,42 @@
-# 提示词模板
+import json
 
-MAIN_PROMPT_TEMPLATE = """
-你是一个专业的视频剪辑助手。
-你的任务是根据用户的需求，从以下视频字幕中筛选出最符合要求的精彩片段。
+# For visual_recognition.py
+VISUAL_ANALYSIS_PROMPT = "请详细描述这张图片的内容，包括场景、人物、动作和关键视觉元素。"
 
-用户需求：
-{user_instruction}
-
-视频字幕内容（包含时间戳）：
-{context_text}
-
-请分析字幕内容，找出符合需求的片段。
-请返回一个 JSON 列表，列表中的每个元素包含以下字段：
-- start_time: 片段开始时间（秒，float）
-- end_time: 片段结束时间（秒，float）
-- score: 推荐指数（1-10，float）
-- reason: 推荐理由（简短说明，str）
+# For data_cleaner.py
+def get_summarize_visual_prompt(long_text):
+    return f"""
+你是一个数据清洗助手。请将以下这段冗长的视频画面描述，精简为【一句话摘要】。
 
 要求：
-1. 仅返回纯 JSON 数组，不包含任何多余文字或代码块标记。
-2. start_time 和 end_time 必须准确对应字幕中的时间。
-3. 如果没有符合要求的片段，返回空列表 []。
+1. 保留核心动作（如“切肉”、“拧螺丝”）。
+2. 保留关键物体（如“菜刀”、“万用表”）。
+3. 去除所有修饰性废话。
+4. 字数控制在 50 字以内。
+5. 直接输出摘要，不要包含任何解释。
 
-返回示例：
-[
-    {{
-        "start_time": 10.5,
-        "end_time": 20.0,
-        "score": 9.5,
-        "reason": "该片段详细解释了核心概念，符合用户想要'干货'的需求。"
-    }}
-]
+待处理文本：
+{long_text}
+"""
+
+# For text_analyzer.py
+def get_classify_segments_prompt(items_to_classify):
+    return f"""
+你是一个专业的视频剪辑助手。请对以下视频字幕片段进行分类。
+分类标签及其定义如下：
+- instruction: 重要知识点，不能省略 (关键词: 注意, 切记, 必须...)
+- action: 实操精华，需要看清每个步骤 (关键词: 拧, 焊, 装, 拆...)
+- demonstration: 展示过程，不需要逐帧看 (关键词: 展示, 演示, 看...)
+- explanation: 原理解释 (关键词: 因为, 所以, 原理...)
+- question: 互动环节 (关键词: 为什么, 如何, 吗...)
+- review: 回顾内容 (关键词: 回顾, 总结...)
+- transition: 过渡内容 (关键词: 接下来, 然后...)
+- noise: 无效片段 (关键词: 嗯, 啊, 呃...)
+
+请根据文本内容判断最合适的标签。
+返回格式必须是合法的 JSON 列表，每项包含 "id" 和 "label"。
+例如: [{{"id": 1, "label": "instruction"}}, {{"id": 2, "label": "noise"}}]
+
+待分类片段：
+{json.dumps(items_to_classify, ensure_ascii=False)}
 """
