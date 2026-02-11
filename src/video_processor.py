@@ -612,6 +612,108 @@ class VideoProcessor:
             pass
         
         return False
+    
+    def add_subtitles(self, video_path, transcript_path, output_path, font_path=None):
+        """
+        为视频添加字幕
+        参数Args:
+            video_path: 输入视频路径
+            transcript_path: 转录文件路径（JSON格式）
+            output_path: 输出视频路径
+            font_path: 字体文件路径（可选）
+        返回Returns:
+            bool: 是否成功
+        """
+        try:
+            import json
+            import subprocess
+            import os
+            
+            # 确保输出目录存在
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            # 读取转录文件
+            with open(transcript_path, 'r', encoding='utf-8') as f:
+                transcript = json.load(f)
+            
+            # 获取 FFmpeg 路径
+            try:
+                import imageio_ffmpeg
+                ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                print(f"使用 FFmpeg: {ffmpeg_exe}")
+            except ImportError:
+                print("错误: imageio_ffmpeg 不可用，请安装该包")
+                return False
+            
+            # 使用 MoviePy 来添加字幕（更可靠的方法）
+            try:
+                import moviepy
+                
+                # 准备字幕数据
+                subtitles_data = []
+                for item in transcript:
+                    if isinstance(item, dict) and 'content' in item and 'time_range' in item:
+                        text = item['content']
+                        time_range = item['time_range']
+                        if isinstance(time_range, list) and len(time_range) >= 2:
+                            start = time_range[0]
+                            end = time_range[1]
+                            if text and end > start:
+                                subtitles_data.append(((start, end), text))
+                
+                if not subtitles_data:
+                    print("警告: 未找到有效的字幕数据")
+                    return False
+                
+                # 加载视频
+                with moviepy.VideoFileClip(video_path) as video:
+                    # 为每个字幕片段创建TextClip
+                    subtitle_clips = []
+                    for (start, end), text in subtitles_data:
+                        try:
+                            txt_clip = moviepy.TextClip(
+                                text=text,
+                                font_size=36, 
+                                color='white',
+                                method='caption',
+                                size=(video.w - 100, None),
+                                stroke_color=None,
+                                stroke_width=0,
+                                bg_color=None
+                            ).with_start(start).with_end(end).with_position(('center', video.h - 80))
+                            subtitle_clips.append(txt_clip)
+                        except Exception as e:
+                            print(f"创建字幕失败: {e}")
+                            continue
+                    
+                    if not subtitle_clips:
+                        print("警告: 未能创建任何字幕")
+                        return False
+                    
+                    # 将字幕添加到视频
+                    final = moviepy.CompositeVideoClip([video] + subtitle_clips)
+                    
+                    # 导出视频
+                    final.write_videofile(output_path, codec='libx264', audio_codec='aac', 
+                                         fps=30, threads=4, logger=None)
+                
+                print(f"✓ 字幕添加完成: {output_path}")
+                return True
+                
+            except ImportError as e:
+                print(f"MoviePy 导入失败: {e}")
+                return False
+            except Exception as e:
+                print(f"使用 MoviePy 添加字幕失败: {e}")
+                import traceback
+                traceback.print_exc()
+                return False
+                
+        except Exception as e:
+            print(f"添加字幕失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
 # 测试代码
 if __name__ == "__main__":
