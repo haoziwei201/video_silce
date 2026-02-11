@@ -874,6 +874,100 @@ def convert_to_vertical():
         print("详细信息请查看日志文件: video_silce.log")
         return False
 
+def add_subtitles_to_video():
+    """为视频添加字幕功能"""
+    logger.info("开始执行为视频添加字幕功能")
+    
+    try:
+        # 初始化视频处理器
+        video_processor = VideoProcessor()
+        
+        # 列出输入目录中的所有视频文件
+        video_files = []
+        if os.path.exists(INPUT_VIDEO_DIR):
+            for file in os.listdir(INPUT_VIDEO_DIR):
+                if file.lower().endswith(('.mp4', '.mov', '.avi', '.mkv')):
+                    video_files.append(file)
+        
+        if not video_files:
+            print(f"未在 {INPUT_VIDEO_DIR} 目录中找到视频文件。")
+            print("请将视频文件放入该目录后重新运行程序。")
+            return False
+        
+        # 显示可用的视频文件
+        print("\n可用的视频文件:")
+        for i, video_file in enumerate(video_files, 1):
+            print(f"  {i}. {video_file}")
+        
+        # 让用户选择视频
+        while True:
+            try:
+                choice = input(f"\n请选择要添加字幕的视频 (1-{len(video_files)}) 或输入文件名: ").strip()
+                
+                # 如果用户直接输入了数字
+                if choice.isdigit():
+                    index = int(choice) - 1
+                    if 0 <= index < len(video_files):
+                        video_filename = video_files[index]
+                        break
+                    else:
+                        print(f"请输入 1-{len(video_files)} 之间的数字。")
+                
+                # 如果用户输入了文件名
+                elif choice in video_files:
+                    video_filename = choice
+                    break
+                
+                else:
+                    print("输入无效，请重新选择。")
+                    
+            except ValueError:
+                print("请输入有效的数字或文件名。")
+        
+        # 处理视频
+        video_path = os.path.join(INPUT_VIDEO_DIR, video_filename)
+        video_name = os.path.splitext(video_filename)[0]
+        
+        # 检查是否存在对应的转录文件
+        transcript_filename = f"{video_name}_transcript.json"
+        transcript_path = os.path.join(TRANSCRIPTS_DIR, transcript_filename)
+        
+        if not os.path.exists(transcript_path):
+            print(f"\n错误: 未找到对应的转录文件 {transcript_filename}")
+            print("请先执行步骤1 '数据准备' 来生成转录文件。")
+            return False
+        
+        # 设置输出路径
+        output_filename = f"{video_name}_with_subtitles.mp4"
+        output_path = os.path.join(OUTPUT_VIDEO_DIR, output_filename)
+        
+        print(f"\n{'='*60}")
+        print(f"准备为视频添加字幕: {video_filename}")
+        print(f"转录文件: {transcript_filename}")
+        print(f"输出文件: {output_filename}")
+        print(f"{'='*60}")
+        
+        # 调用添加字幕方法
+        success = video_processor.add_subtitles(video_path, transcript_path, output_path)
+        
+        if success:
+            print(f"\n{'='*60}")
+            print(f"字幕添加完成!")
+            print(f"输出视频: {output_path}")
+            print(f"{'='*60}")
+            logger.info(f"字幕添加完成，输出文件: {output_path}")
+            return True
+        else:
+            logger.error("字幕添加失败")
+            print("错误: 字幕添加失败")
+            return False
+            
+    except Exception as e:
+        logger.exception(f"添加字幕出错: {str(e)}")
+        print(f"\n错误: {str(e)}")
+        print("详细信息请查看日志文件: video_silce.log")
+        return False
+
 def main():
     """主函数"""
     logger.info("开始视频智能剪辑流程")
@@ -888,9 +982,10 @@ def main():
         print("2. 构建RAG知识库，执行前请确保transcripts里有对应json文件")
         print("3. 调用API进行文本分析并进行视频剪辑功能")
         print("4. 横屏转竖屏，将横屏视频转换为竖屏格式")
+        print("5. 为视频添加字幕")
 
         while True:
-            branch = input("\n 请用数字1-4来选择操作或输入q来退出程序: ").strip()
+            branch = input("\n 请用数字1-5来选择操作或输入q来退出程序: ").strip()
             if branch.lower() == 'q':
                 break
 
@@ -904,8 +999,10 @@ def main():
                     video_editing()
                 elif branch_index == 4:
                     convert_to_vertical()
+                elif branch_index == 5:
+                    add_subtitles_to_video()
                 else:
-                    print(f"请输入 1-4 之间的数字。")
+                    print(f"请输入 1-5 之间的数字。")
 
         return
         
