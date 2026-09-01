@@ -4,6 +4,7 @@ import subprocess
 import numpy as np
 import cv2
 import json
+from tqdm import tqdm
 from moviepy import VideoFileClip, concatenate_videoclips, CompositeVideoClip
 import imageio_ffmpeg
 
@@ -162,12 +163,41 @@ class VideoProcessor:
             print("  - [阶段2&3] 正在检测文字区域(OCR预处理)和运动变化...")
             # 为了效率，每0.5秒采样一帧
             sample_interval = 0.5 
-            curr_time = 0.0
+            
+            # 优化策略：不使用 cap.set() 跳转，而是流式读取
+            # 计算每隔多少帧采样一次
+            frame_interval = int(fps * sample_interval)
+            if frame_interval < 1: frame_interval = 1
+            
+            curr_frame_idx = 0
+            
+            # 重新打开视频以从头开始读取
+            cap.release()
+            cap = cv2.VideoCapture(video_path)
             
             prev_frame_gray = None
             last_motion_time = -100 # 上一次因运动提取的时间
             
-            while curr_time < duration:
+            pbar = tqdm(total=int(total_frames), desc="  - 扫描进度", unit="frames")
+            
+            while True:
+                # 抓取帧但不解码（快速）
+                if curr_frame_idx % frame_interval != 0:
+                    ret = cap.grab()
+                    if not ret:
+                        break
+                    curr_frame_idx += 1
+                    pbar.update(1)
+                    continue
+                
+                # 需要处理的帧：解码
+                ret, frame = cap.retrieve()
+                if not ret:
+                    break
+                    
+                curr_time = curr_frame_idx / fps
+                pbar.update(1)
+                
                 # 跳过已经提取的时间点附近，但仍需读取帧以更新 prev_frame
                 is_extracted = False
                 for t in extracted_times:
@@ -175,34 +205,32 @@ class VideoProcessor:
                         is_extracted = True
                         break
                 
-                cap.set(cv2.CAP_PROP_POS_MSEC, curr_time * 1000)
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                    
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 
                 # 如果当前时间点已经被提取过，只更新prev_frame并继续
                 if is_extracted:
                     prev_frame_gray = gray
-                    curr_time += sample_interval
+                    curr_frame_idx += 1
                     continue
 
                 # A. PPT/文字检测
                 if self._detect_bright_rectangle(frame):
-                    self._add_keyframe(cap, curr_time, output_dir, keyframes, extracted_times, prefix="ppt_")
-                    last_motion_time = curr_time # PPT也算是一种视觉变化点
+                    # 注意：这里直接保存当前frame，避免再次调用 _add_keyframe 里的 cap.set
+                    self._save_frame_direct(frame, curr_time, output_dir, keyframes, extracted_times, prefix="ppt_")
+                    last_motion_time = curr_time 
                 
                 # B. 运动检测
                 elif prev_frame_gray is not None:
-                    # 只有当距离上次运动提取超过2秒时才再次提取，避免连续运动产生大量帧
+                    # 只有当距离上次运动提取超过2秒时才再次提取
                     if curr_time - last_motion_time > 2.0:
                         if self._detect_motion_simple(prev_frame_gray, gray):
-                            self._add_keyframe(cap, curr_time, output_dir, keyframes, extracted_times, prefix="motion_")
+                            self._save_frame_direct(frame, curr_time, output_dir, keyframes, extracted_times, prefix="motion_")
                             last_motion_time = curr_time
 
                 prev_frame_gray = gray
-                curr_time += sample_interval
+                curr_frame_idx += 1
+
+            pbar.close()
 
             # 4. 兜底覆盖
             print("  - [兜底] 检查覆盖率...")
@@ -239,6 +267,25 @@ class VideoProcessor:
             import traceback
             traceback.print_exc()
             return []
+
+    def _save_frame_direct(self, frame, time_sec, output_dir, keyframes_list, extracted_times_set, prefix="frame_"):
+        """直接保存当前帧数据，避免重新读取"""
+        # 简单去重
+        for t in extracted_times_set:
+            if abs(t - time_sec) < 0.2:
+                return
+
+        frame_name = f"{prefix}{int(time_sec*1000):06d}.jpg"
+        frame_path = os.path.join(output_dir, frame_name)
+        try:
+            cv2.imwrite(frame_path, frame)
+            extracted_times_set.add(time_sec)
+            keyframes_list.append({
+                "time": time_sec,
+                "path": frame_path
+            })
+        except Exception as e:
+            print(f"Error saving frame: {e}")
 
     def _add_keyframe(self, cap, time_sec, output_dir, keyframes_list, extracted_times_set, prefix="frame_"):
         """辅助函数：保存关键帧"""
@@ -350,71 +397,47 @@ class VideoProcessor:
         selected_clips.sort(key=lambda x: x['start_time'])
         return selected_clips
 
-    
-    def combine_clips(self, clip_paths, output_filename="output_video.mp4"):
+    def combine_clips(self, clip_paths, output_path):
         """
-        组合片段并生成最终视频
-        参数Args:
-            clip_paths: 视频片段路径列表 (注意：这里为了兼容 main.py，第一个参数改为路径列表)
-            output_filename: 输出视频文件名或完整路径
-        返回Returns:
-            bool: 是否成功
+        使用 FFmpeg concat demuxer 合并视频片段，只启动一个进程
         """
         try:
-            clips = []
-            # 适配：如果传入的是路径列表（main.py 的调用方式）
-            if isinstance(clip_paths, list) and all(isinstance(p, str) for p in clip_paths):
-                 for path in clip_paths:
-                     try:
-                         clips.append(VideoFileClip(path))
-                     except Exception as e:
-                         print(f"Error loading clip {path}: {e}")
-            else:
-                 # 之前的逻辑是传入 video_path 和 segments，这里为了兼容 main.py 做了调整
-                 # 如果你需要保留之前的逻辑，可以加参数判断，但 main.py 传的是 clip_paths
-                 print("Error: combine_clips expects a list of file paths.")
-                 return False
+            # 创建 concat 文件列表
+            concat_file = os.path.join(os.path.dirname(output_path), "concat_list.txt")
+            with open(concat_file, 'w', encoding='utf-8') as f:
+                for path in clip_paths:
+                    # 使用绝对路径，确保安全
+                    abs_path = os.path.abspath(path).replace('\\', '/')
+                    f.write(f"file '{abs_path}'\n")
 
-            if not clips:
-                print("No valid clips to combine.")
-                return False
-            
-            # 组合片段
-            # 使用 method="compose" 可以避免因不同片段的参数微小差异导致的问题
-            final_clip = concatenate_videoclips(clips, method="compose")
-            
-            # 生成输出路径
-            # 如果 output_filename 已经是绝对路径，直接使用；否则拼接到 OUTPUT_VIDEO_DIR
-            if os.path.isabs(output_filename):
-                output_path = output_filename
-            else:
-                output_path = os.path.join(OUTPUT_VIDEO_DIR, output_filename)
-            
-            # 确保输出目录存在
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            # 获取 FFmpeg 路径
+            import imageio_ffmpeg
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
-            # 导出视频
-            final_clip.write_videofile(
-                output_path,
-                codec="libx264",
-                audio_codec="aac",
-                fps=30,
-                preset="medium",
-                threads=4,
-                logger=None
-            )
-            
-            # 关闭资源
-            for clip in clips:
-                clip.close()
-            final_clip.close()
-            
-            print(f"Video successfully generated: {output_path}")
+            # 构建命令：直接复制流，不重新编码
+            cmd = [
+                ffmpeg_exe, "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", concat_file,
+                "-c", "copy",        # 关键：直接复制，无重编码
+                output_path
+            ]
+
+            print(f"合并命令: {' '.join(cmd)}")
+            subprocess.run(cmd, check=True, capture_output=True)
+
+            # 删除临时文件
+            os.remove(concat_file)
             return True
-            
-        except Exception as e:
-            print(f"Error processing video: {e}")
+
+        except subprocess.CalledProcessError as e:
+            print(f"FFmpeg 合并失败: {e.stderr.decode() if e.stderr else e}")
             return False
+        except Exception as e:
+            print(f"合并异常: {e}")
+            return False
+
     
     def process_video(self, video_path, analyzed_segments, max_duration=300, output_filename="output_video.mp4"):
         """
@@ -506,12 +529,16 @@ class VideoProcessor:
             # 增加硬件加速参数（如果有Nvidia显卡可以换成 h264_nvenc）
             # 获取 imageio 提供的 ffmpeg 路径
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+            # 检查是否使用了复杂的滤镜链（带有 [bg][fg] 等标签）
+            is_complex = any(tag in filter_str for tag in ["[bg]", "[fg]", "[0:v]"])
+            filter_arg = "-filter_complex" if is_complex else "-vf"
             
             cmd = [
                 ffmpeg_exe, "-y",
                 "-hide_banner",        # 隐藏版权信息
                 "-i", video_path,
-                "-vf", filter_str,
+                filter_arg, filter_str,
                 "-c:v", "libx264",
                 "-preset", "veryfast", # 速度优先
                 "-crf", "23",          # 画质平衡
@@ -593,11 +620,18 @@ class VideoProcessor:
                 # 如果文件大小稳定3次检查
                 if stable_count >= 3:
                     # 尝试读取文件头确认视频格式
-                    with open(filepath, 'rb') as f:
-                        header = f.read(100)
-                        # 检查是否是有效的视频文件（MP4文件以"ftyp"开头）
-                        if header.startswith(b'\x00\x00\x00\x1cftyp'):
-                            return True
+                    try:
+                        with open(filepath, 'rb') as f:
+                            header = f.read(100)
+                            # 宽松检查：只要包含 ftyp 即可，因为不同编码器生成的 header 长度可能不同
+                            if b'ftyp' in header:
+                                return True
+                    except:
+                        pass
+                    
+                    # 如果读取 header 失败但文件大小稳定且足够大，也认为是成功的
+                    if current_size > 1024 * 10: # > 10KB
+                        return True
                 
                 time.sleep(0.5)
                 
@@ -612,30 +646,38 @@ class VideoProcessor:
             pass
         
         return False
-    
-    def add_subtitles(self, video_path, transcript_path, output_path, font_path=None):
+
+    def add_subtitles(self, video_path, transcript_path, output_path, font_path=None,
+                      font_size=36, font_color="#FFFFFF", bg_color="#000000",
+                      bg_opacity=50, position="bottom"):
         """
-        为视频添加字幕
-        参数Args:
+        为视频添加字幕（提速版，保留原版路径处理逻辑）
+        参数:
             video_path: 输入视频路径
             transcript_path: 转录文件路径（JSON格式）
             output_path: 输出视频路径
-            font_path: 字体文件路径（可选）
-        返回Returns:
+            font_path: 字体文件路径（可选，当前未使用）
+            font_size: 字号
+            font_color: 字体颜色 (#RRGGBB)
+            bg_color: 背景颜色 (#RRGGBB)
+            bg_opacity: 背景不透明度 (0-100)
+            position: 字幕位置 (top/middle/bottom)
+        返回:
             bool: 是否成功
         """
         try:
             import json
             import subprocess
             import os
-            
+            import tempfile
+
             # 确保输出目录存在
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            
+
             # 读取转录文件
             with open(transcript_path, 'r', encoding='utf-8') as f:
                 transcript = json.load(f)
-            
+
             # 获取 FFmpeg 路径
             try:
                 import imageio_ffmpeg
@@ -644,15 +686,12 @@ class VideoProcessor:
             except ImportError:
                 print("错误: imageio_ffmpeg 不可用，请安装该包")
                 return False
-            
-            # 使用 MoviePy 来添加字幕（更可靠的方法）
-            try:
-                import moviepy
-                
-                # 准备字幕数据
-                subtitles_data = []
-                for item in transcript:
-                    if isinstance(item, dict) and 'content' in item and 'time_range' in item:
+
+            # ==================== 准备字幕数据 ====================
+            subtitles_data = []
+            for item in transcript:
+                if isinstance(item, dict):
+                    if 'content' in item and 'time_range' in item:
                         text = item['content']
                         time_range = item['time_range']
                         if isinstance(time_range, list) and len(time_range) >= 2:
@@ -660,55 +699,140 @@ class VideoProcessor:
                             end = time_range[1]
                             if text and end > start:
                                 subtitles_data.append(((start, end), text))
-                
-                if not subtitles_data:
-                    print("警告: 未找到有效的字幕数据")
-                    return False
-                
-                # 加载视频
-                with moviepy.VideoFileClip(video_path) as video:
-                    # 为每个字幕片段创建TextClip
-                    subtitle_clips = []
-                    for (start, end), text in subtitles_data:
-                        try:
-                            txt_clip = moviepy.TextClip(
-                                text=text,
-                                font_size=36, 
-                                color='white',
-                                method='caption',
-                                size=(video.w - 100, None),
-                                stroke_color=None,
-                                stroke_width=0,
-                                bg_color=None
-                            ).with_start(start).with_end(end).with_position(('center', video.h - 80))
-                            subtitle_clips.append(txt_clip)
-                        except Exception as e:
-                            print(f"创建字幕失败: {e}")
-                            continue
-                    
-                    if not subtitle_clips:
-                        print("警告: 未能创建任何字幕")
-                        return False
-                    
-                    # 将字幕添加到视频
-                    final = moviepy.CompositeVideoClip([video] + subtitle_clips)
-                    
-                    # 导出视频
-                    final.write_videofile(output_path, codec='libx264', audio_codec='aac', 
-                                         fps=30, threads=4, logger=None)
-                
-                print(f"✓ 字幕添加完成: {output_path}")
-                return True
-                
-            except ImportError as e:
-                print(f"MoviePy 导入失败: {e}")
+                    elif 'word' in item and 'start' in item and 'end' in item:
+                        text = item['word']
+                        start = item['start']
+                        end = item['end']
+                        if text and end > start:
+                            subtitles_data.append(((start, end), text))
+
+            if not subtitles_data:
+                print("警告: 未找到有效的字幕数据")
                 return False
-            except Exception as e:
-                print(f"使用 MoviePy 添加字幕失败: {e}")
-                import traceback
-                traceback.print_exc()
-                return False
-                
+
+            # 按起始时间排序
+            subtitles_data.sort(key=lambda x: x[0][0])
+
+            # ==================== 生成临时 SRT 字幕文件（放在视频目录）====================
+            video_dir = os.path.dirname(video_path)
+            # 使用临时文件创建唯一 srt 文件，避免并发冲突
+            with tempfile.NamedTemporaryFile(
+                mode='w',
+                suffix='.srt',
+                dir=video_dir,
+                delete=False,
+                encoding='utf-8'
+            ) as tmp_srt:
+                srt_filename = os.path.basename(tmp_srt.name)  # 仅文件名，用于相对路径
+                srt_path = tmp_srt.name                        # 完整路径，用于后续删除
+
+                def format_time(seconds):
+                    hours = int(seconds // 3600)
+                    minutes = int((seconds % 3600) // 60)
+                    secs = int(seconds % 60)
+                    millis = int((seconds % 1) * 1000)
+                    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+                for i, ((start, end), text) in enumerate(subtitles_data, 1):
+                    tmp_srt.write(f"{i}\n")
+                    tmp_srt.write(f"{format_time(start)} --> {format_time(end)}\n")
+                    tmp_srt.write(f"{text}\n\n")
+
+            print(f"已生成 SRT 字幕文件: {srt_path}")
+
+            # ==================== 检测最佳编码器（硬件加速优先）====================
+            def detect_best_encoder():
+                """检测可用的硬件编码器，返回编码器名称和对应质量参数"""
+                encoders_to_check = [
+                    ("h264_nvenc", "cq"),      # NVIDIA
+                    ("h264_amf", "quality"),   # AMD
+                    ("h264_qsv", "global_quality"),  # Intel
+                    ("libx264", "crf")         # 软件编码 fallback
+                ]
+                for enc, qual_param in encoders_to_check:
+                    try:
+                        result = subprocess.run(
+                            [ffmpeg_exe, "-encoders"],
+                            capture_output=True, text=True, timeout=5
+                        )
+                        if enc in result.stdout:
+                            print(f"检测到可用编码器: {enc}")
+                            return enc, qual_param
+                    except:
+                        continue
+                return "libx264", "crf"
+
+            video_encoder, quality_param = detect_best_encoder()
+
+            # 根据编码器设置最快编码参数
+            encode_params = []
+            if video_encoder == "libx264":
+                # 软件编码：使用 ultrafast 预设，CRF 30（速度极快）
+                encode_params = ["-preset", "ultrafast", "-crf", "30"]
+            elif video_encoder == "h264_nvenc":
+                # NVIDIA 硬件编码：使用 p1（最快预设），cq 值 30
+                encode_params = ["-preset", "p1", "-cq", "30"]
+            elif video_encoder == "h264_amf":
+                # AMD 硬件编码：quality 值 0-9，数值越低越快；这里用 0（最快）
+                encode_params = ["-quality", "0", "-rc", "cqp", "-qp_i", "30", "-qp_p", "30"]
+            elif video_encoder == "h264_qsv":
+                # Intel 硬件编码：使用 fastest 预设，global_quality 30
+                encode_params = ["-preset", "fastest", "-global_quality", "30"]
+            else:
+                encode_params = ["-preset", "ultrafast", "-crf", "30"]
+
+            # 添加多线程参数（自动使用所有 CPU 核心）
+            encode_params.extend(["-threads", "auto"])
+
+            # ==================== 构建字幕样式 (force_style) ====================
+            alignment_map = {"top": 8, "middle": 5, "bottom": 2}
+            alignment = alignment_map.get(position, 2)
+            bg_opacity = max(0, min(100, int(bg_opacity)))
+
+            def hex_to_ass(hex_color, alpha=0):
+                h = hex_color.lstrip('#')
+                r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+                return f"&H{alpha:02X}{b:02X}{g:02X}{r:02X}"
+
+            primary_colour = hex_to_ass(font_color, 0)
+            bg_alpha = int(round((100 - bg_opacity) * 255 / 100))
+            back_colour = hex_to_ass(bg_color, bg_alpha)
+
+            force_style = (
+                f"Fontsize={font_size},"
+                f"PrimaryColour={primary_colour},"
+                f"BorderStyle=3,"
+                f"BackColour={back_colour},"
+                f"Alignment={alignment},"
+                f"MarginV=80"
+            )
+
+            # ==================== 构建 FFmpeg 命令 ====================
+            # 使用 cwd 参数将工作目录设为视频目录，这样字幕文件可通过相对路径访问
+            # 视频输入使用绝对路径（在 cwd 下依然有效）
+            cmd = [
+                ffmpeg_exe, "-y",
+                "-i", video_path,
+                "-vf", f"subtitles='{srt_filename}':force_style='{force_style}'",
+                "-c:a", "copy",
+                "-c:v", video_encoder,
+            ] + encode_params + [output_path]
+
+            print(f"正在使用编码器 {video_encoder} 添加字幕...")
+            subprocess.run(cmd, check=True, cwd=video_dir)  # 设置工作目录为视频目录
+
+            # 删除临时 SRT 文件
+            try:
+                os.remove(srt_path)
+            except:
+                pass
+
+            print(f"✓ 字幕添加完成: {output_path}")
+            return True
+
+        except subprocess.CalledProcessError as e:
+            print(f"FFmpeg 执行失败: {e}")
+            return False
         except Exception as e:
             print(f"添加字幕失败: {e}")
             import traceback

@@ -31,7 +31,13 @@ KEYFRAMES_DIR = os.path.join(BASE_DIR, "data", "keyframes")
 RAGSCRIPTS_DIR = os.path.join(BASE_DIR, "data", "ragscripts")
 VERTICAL_VIDEO_DIR = os.path.join(BASE_DIR, "data", "vertical_videos")
 
+# 新架构路径配置
+VIDEO_POOL_DIR = os.path.join(BASE_DIR, "data", "video_pool")
+GLOBAL_CACHE_DIR = os.path.join(BASE_DIR, "data", "global_cache")
+LIBRARIES_DIR = os.path.join(BASE_DIR, "data", "libraries")
+SLICE_CACHE_DIR = os.path.join(BASE_DIR, "data", "slice_cache")  # Added slice cache
+
 # 确保目录存在
-for directory in [INPUT_VIDEO_DIR, OUTPUT_VIDEO_DIR, PROCESSED_AUDIO_DIR, SLICE_VIDEO_DIR, ANALYSIS_RESULTS_DIR, TRANSCRIPTS_DIR, KEYFRAMES_DIR, RAGSCRIPTS_DIR, VERTICAL_VIDEO_DIR]:
+for directory in [INPUT_VIDEO_DIR, OUTPUT_VIDEO_DIR, PROCESSED_AUDIO_DIR, SLICE_VIDEO_DIR, ANALYSIS_RESULTS_DIR, TRANSCRIPTS_DIR, KEYFRAMES_DIR, RAGSCRIPTS_DIR, VERTICAL_VIDEO_DIR, VIDEO_POOL_DIR, GLOBAL_CACHE_DIR, LIBRARIES_DIR, SLICE_CACHE_DIR]:
     os.makedirs(directory, exist_ok=True)
 

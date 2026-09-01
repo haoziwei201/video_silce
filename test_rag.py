@@ -61,11 +61,13 @@ def test_rag_pipeline(transcript_filename):
         with open(rag_ready_path, 'r', encoding='utf-8') as f:
             rag_data = json.load(f)
         
-        vkb = VideoKnowledgeBase()
+        # 使用测试专用库
+        test_lib_name = "test_rag_lib"
+        vkb = VideoKnowledgeBase(lib_name=test_lib_name)
         
         # 检查向量库是否已有数据，避免重复 Embedding 消耗
         existing_count = vkb.collection.count()
-        print(f"当前向量库中已有 {existing_count} 条数据。")
+        print(f"当前向量库 '{test_lib_name}' 中已有 {existing_count} 条数据。")
         
         do_upsert = True
         if existing_count > 0:
@@ -75,6 +77,11 @@ def test_rag_pipeline(transcript_filename):
                 print("⏭️  已跳过入库步骤。")
 
         if do_upsert:
+            # 使用伪造 MD5 进行测试
+            import hashlib
+            video_md5 = hashlib.md5(transcript_filename.encode()).hexdigest()
+            print(f"使用测试 MD5: {video_md5}")
+
             # 分批处理以避免 Embedding API 限制 (通常为 25)
             BATCH_SIZE = 20
             total_items = len(rag_data)
@@ -83,21 +90,8 @@ def test_rag_pipeline(transcript_filename):
             for i in range(0, total_items, BATCH_SIZE):
                 batch_data = rag_data[i : i + BATCH_SIZE]
                 
-                batch_ids = [str(item['id']) for item in batch_data]
-                batch_documents = [item['rag_text'] for item in batch_data]
-                batch_metadatas = [{
-                    "start": item['start'],
-                    "end": item['end'],
-                    "type": item['type'],
-                    "category": item['category'],
-                    "raw_content": item['content']
-                } for item in batch_data]
-
-                vkb.collection.upsert(
-                    ids=batch_ids,
-                    documents=batch_documents,
-                    metadatas=batch_metadatas
-                )
+                # 更新后的 add_data 调用
+                vkb.add_data(batch_data, video_md5)
                 print(f"  - 进度: {min(i + BATCH_SIZE, total_items)}/{total_items} 已处理")
 
             print(f"向量库更新完成")
@@ -111,7 +105,7 @@ def test_rag_pipeline(transcript_filename):
     print(f"{'='*50}")
     
     while True:
-        query = input("\n请输入查询指令 (例如: '找出切肉的画面'): ").strip()
+        query = input("\n请输入查询指令 (例如: '找出切肉的画面') 或输入 'q' 退出: ").strip()
         if query.lower() == 'q':
             break
         
@@ -120,14 +114,16 @@ def test_rag_pipeline(transcript_filename):
             
         try:
             print(f"正在检索: '{query}'...")
-            results = vkb.search(query, top_k=3)
+            results = vkb.search(query, top_k=3, expand_context=True)
             
             print("\n检索结果:")
             if results and 'documents' in results and results['documents']:
                 for i, doc in enumerate(results['documents'][0]):
                     if i < len(results['metadatas'][0]):
                         meta = results['metadatas'][0][i]
-                        print(f"  {i+1}. [{meta['start']:.1f}s - {meta['end']:.1f}s] {doc}")
+                        is_expanded = meta.get('is_expanded', False)
+                        expanded_tag = " [已扩展]" if is_expanded else ""
+                        print(f"  {i+1}. [{meta['start']:.1f}s - {meta['end']:.1f}s]{expanded_tag} {doc}")
                     else:
                         print(f"  {i+1}. {doc}")
             else:

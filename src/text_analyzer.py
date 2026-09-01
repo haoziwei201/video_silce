@@ -22,7 +22,7 @@ except ImportError:
         DEEPSEEK_API_KEY = ""
         DEEPSEEK_BASE_URL = ""
 
-from prompts import get_classify_segments_prompt
+from src.prompts import get_classify_segments_prompt
 
 import httpx
 

@@ -2,112 +2,126 @@
 
 > **Harnessing the Power of LLMs for Non-Linear Editing and RAG-Based Question-Answering**
 
-**Video Swagger** 是一个面向垂直行业（职业教育、非遗传承、技能培训）的智能视频资产管理与重构系统。
-
-旨在解决长视频（如 2 小时的技能教学、手工艺录像）**“非结构化、难检索、难传播”**的痛点。通过多模态 AI 技术，我们将沉睡在硬盘里的“死视频”炼化为 **“高传播力的短视频”**和 **“可交互的知识库”**。
+**Video Swagger** 是一个面向垂直行业（如职业教育、技能培训、非遗传承）的智能视频处理系统。它能将长达数小时的非结构化视频（如教学录像、操作演示），自动转化为**高传播力的短视频切片**和**可交互的视频知识库**。
 
 ---
 
-## 🌟 核心价值
+## 🌟 核心功能 (Key Features)
 
-*   **社会价值（Social Impact）**：响应“数字工匠”与“乡村振兴”号召。帮助非遗传承人和新农人将隐性的实操技艺，转化为显性的、易于传播的数字资产，降低技能学习门槛。
-*   **商业价值（Commercial Value）**：为职业培训机构提供降本增效工具。将课程制作成本降低 90%，并提供“7x24小时 AI 助教”功能，实现从“卖视频”到“卖服务”的转型。
+### 1. 智能切片 (Smart Slicing)
+解决“长视频没人看”的问题。
+*   **自动去水**：识别并剔除废话、静音和无效片段。
+*   **高光提取**：基于 DeepSeek 语义分析，自动提取“核心知识点”和“高难度操作”瞬间。
+*   **自动化剪辑**：一键生成小于 60 秒的短视频，适合抖音/小红书传播。
 
----
-
-## 🏗️ 系统架构与功能模块
-
-本项目采用 **“感知 - 决策 - 执行”** 的闭环架构，包含四大核心模块：
-
-### 1. 多模态资产解析引擎 (Ingestion & Analysis Engine)
-*负责将非结构化的视频流转化为结构化的语义数据。*
-*   **高精度语音转写 (ASR)**：集成阿里 **Paraformer** 模型，实现毫秒级时间戳对齐，支持识别情绪、笑声与环境音。
-*   **静默操作理解 (Visual Understanding)**：*(开发中)* 针对技能教学中“只做不说”的静默片段，引入 **VLM (如 Qwen-VL)** 进行视觉抽帧描述，确保关键动作不丢失。
-
-### 2. 智能营销内容工厂 (Marketing Content Factory) —— *Current MVP*
-*负责“对外传播”，解决获客难问题。*
-*   **非线性语义剪辑**：利用 **DeepSeek** 大模型理解视频逻辑，打破原始时间轴，根据“信息密度”和“传播价值”重组片段。
-*   **自动化切片**：自动提取金句、高难度操作瞬间，生成 <60s 的高光短视频。
-
-### 3. 交互式视频知识库 (Interactive Video RAG) —— *In Progress*
-*负责“对内赋能”，解决检索难问题。*
-*   **语义检索 (Semantic Search)**：用户通过自然语言提问（如“发动机异响怎么排查？”），系统精准定位到视频中的具体操作步骤。
-*   **精准空降播放**：回答不仅是文字，而是直接播放包含答案的 15 秒视频切片，实现“视频即知识”。
-
-### 4. 企业级安全与管理 (Enterprise Security) —— *Roadmap*
-*负责私有资产保护。*
-*   支持私有化部署，确保核心技术视频不出域。
+### 2. 视频知识库 (Video RAG)
+解决“视频无法检索”的问题。
+*   **语义搜索**：用户用自然语言提问（如“怎么判断电机过热？”），系统直接定位到视频中的具体步骤。
+*   **跨视频检索**：在一个知识库中同时搜索多个视频的内容。
+*   **视觉理解**：不仅听懂语音 (ASR)，还能看懂画面 (VLM)，理解“只做不说”的操作细节。
 
 ---
 
-## 🚀 快速开始 (Getting Started)
+## � 项目结构说明 (Project Structure)
+
+为了方便理解，我们将项目文件分为**执行入口**、**核心逻辑 (src)** 和 **数据中心 (data)** 三部分。
+
+### 1. 执行入口 (Root)
+| 文件名 | 说明 |
+| :--- | :--- |
+| **`streamlit_app.py`** | **[Web UI 主入口]** 可视化管理界面。集成资产管理、知识库问答和切片功能。 |
+| **`main.py`** | **[命令行工具]** 交互式 CLI。用于处理单个视频，生成短视频切片。 |
+| **`batch_processor.py`** | **[命令行工具]** 批量处理脚本。用于将视频目录导入 RAG 知识库。 |
+| `.env` | **[配置]** 存放 API Key (DeepSeek, 阿里云等) 的私密文件。 |
+| `requirements.txt` | **[依赖]** 项目所需的 Python 库列表。 |
+| `.gitignore` | **[规范]** 定义了哪些文件不应上传到 Git。 |
+
+### 🧠 2. 核心逻辑 (`src/`)
+这里是系统的“大脑”和“手脚”。
+
+*   **感知层 (Perception)**
+    *   `speech_to_text.py`: **耳朵**。调用 Paraformer 将视频声音转为文字。
+    *   `visual_recognition.py`: **眼睛**。调用 VLM 模型识别视频画面中的操作动作。
+*   **决策层 (Decision)**
+    *   `text_analyzer.py`: **大脑**。调用 DeepSeek 分析文本语义，决定哪些片段该留，哪些该删。
+    *   `rag_engine.py`: **记忆**。基于 ChromaDB 实现向量检索，负责知识库的搜索功能。
+*   **管理层 (Management)**
+    *   `asset_manager.py`: **仓库管理员**。管理 `video_pool` 和 `global_cache`，确保视频不重复处理。
+    *   `library_manager.py`: **图书管理员**。管理不同的知识库 (`libraries`)。
+*   **执行层 (Execution)**
+    *   `video_processing.py`: **剪刀**。基于 MoviePy 进行物理层面的视频剪辑和合成。
+
+### 💾 3. 数据中心 (`data/`)
+为了节省空间和提升效率，我们采用了独特的数据存储结构：
+
+```text
+data/
+├── input_videos/          # [输入] 待处理的原始视频存放处
+├── video_pool/            # [存储] 视频资产池。所有视频按 MD5 哈希存储，避免重复文件。
+├── global_cache/          # [缓存] 全局分析缓存。存储 ASR 和 VLM 结果，同一视频只需分析一次。
+├── libraries/             # [知识库] 逻辑上的“视频文件夹”。
+│   └── default_lib/       # 例如：一个名为 "default_lib" 的知识库
+│       ├── lib_config.json # 库配置
+│       └── chroma_db/      # 向量数据库索引 (二进制文件)
+├── analysis_results/      # [结果] 剪辑决策表 (JSON)
+├── slice_video/           # [产物] 智能切片后的短视频片段
+└── output_videos/         # [产物] 最终合成的成片
+```
+
+---
+
+## � 快速开始 (Getting Started)
 
 ### 1. 环境准备
+确保已安装 Python 3.10+。
 ```bash
-# 建议使用 python 3.10+
+# 激活虚拟环境 (如果有)
+source venv/bin/activate
+
+# 安装依赖
 pip install -r requirements.txt
 ```
 
-### 2. 配置文件
-在项目根目录下创建 `.env` 文件（参考 `.env.example`），配置 API 密钥：
+### 2. 配置密钥
+在项目根目录创建 `.env` 文件，填入必要的 API Key：
 ```ini
-DASHSCOPE_API_KEY=sk-xxxx  # 阿里云灵积平台 Key (用于语音识别)
-DEEPSEEK_API_KEY=sk-xxxx   # DeepSeek Key (用于语义分析)
+# .env 文件内容示例
+DASHSCOPE_API_KEY=sk-xxxxxx  # 阿里云 (用于语音识别)
+DEEPSEEK_API_KEY=sk-xxxxxx   # DeepSeek (用于语义分析)
 ```
-*注意：请勿将 `.env` 上传至版本控制系统。*
 
-### 3. 运行主程序
-将待处理视频放入 `data/input_videos/`，运行：
+### 3. 运行项目
+
+推荐使用 **Streamlit Web 界面** 进行交互。
+
+#### 🖥️ 方式一：Web 可视化界面 (推荐)
+启动 Web UI，一站式管理视频资产和知识库：
+```bash
+streamlit run streamlit_app.py
+```
+*   **资产中心**：查看 `data/input_videos` 和 `video_pool` 中的视频状态。
+*   **知识库管理**：创建新库、导入视频、构建 RAG 索引。
+*   **智能应用**：进行视频切片或知识库问答。
+
+#### ⌨️ 方式二：命令行工具 (CLI)
+如果你偏好命令行操作，也可以直接运行脚本：
+
+**1. 生成短视频 (Slicing Mode)**
 ```bash
 python main.py
 ```
+*交互式选择视频，自动分析并生成切片。*
 
----
-
-## 📂 文件结构说明
-
+**2. 批量构建知识库 (Batch Processing)**
+```bash
+# 将 data/input_videos 下的所有视频导入名为 "my_course" 的知识库
+python batch_processor.py -i data/input_videos -l my_course
 ```
-video_silce/
-├── main.py                    # [入口] 交互式命令行主程序
-├── config.py                  # [配置] 环境参数与路径管理
-├── requirements.txt           # [依赖] 项目依赖库
-├── .gitignore                 # [规范] Git 忽略规则
-├── src/                       # [核心代码]
-│   ├── video_processor.py     # 视频处理层：基于 MoviePy 的物理剪辑与合并
-│   ├── speech_to_text.py      # 感知层：调用 Paraformer 进行 ASR 转写
-│   ├── text_analyzer.py       # 决策层：调用 DeepSeek 进行语义评分与切片决策
-│   ├── prompts.py             # 提示工程：存储针对垂直行业的 Prompt 模板
-│   └── utils.py               # 工具层：日志记录与文件操作
-└── data/                      # [数据中心] (大文件已配置 gitignore)
-    ├── input_videos/          # 原始素材输入
-    ├── processed_audio/       # 中间态：提取的音频
-    ├── transcripts/           # 中间态：结构化语义数据 (JSON)
-    ├── analysis_results/      # 中间态：AI 剪辑决策表 (EDL)
-    └── output_videos/         # 最终产物：营销短视频/知识切片
-```
+*适合批量初始化数据。*
 
 ---
 
-## 🗺️ 开发路线图 (Roadmap)
+## ⚠️ 注意事项
 
-我们正致力于将 Video Swagger 打造成行业标准的基础设施，未来计划逐步实现以下模块：
-
-- [ ] **多源兼容适配**：支持 Zoom/腾讯会议录制链接直接导入，支持流媒体格式。
-- [ ] **知识点图谱化**：自动提取视频中的 PPT 翻页与关键术语，生成可视化的“视频目录树”。
-- [ ] **视觉增强渲染**：自动生成动态字幕（AIGC Captions）与关键词高亮，提升完播率。
-- [ ] **人工微调工作台 (HITL)**：提供 Web 端可视化界面，允许专家对 AI 剪辑结果进行微调。
-- [ ] **企业级权限管理**：基于角色的访问控制 (RBAC) 与数据资产看板。
-
----
-
-## 🛠️ 技术栈
-
-*   **LLM (大脑)**: DeepSeek-V3 / R1
-*   **ASR (听觉)**: Alibaba Paraformer 
-*   **Video Engine (手脚)**: MoviePy / FFmpeg
-*   **Architecture**: Python / RAG (Retrieval-Augmented Generation)
-
----
-
-*Copyright © 2025 Video Swagger Team. All Rights Reserved.*
-
+*   **数据隐私**：`data/` 目录下的具体视频文件和数据库已被 `.gitignore` 忽略，不会上传到代码仓库，保护你的资产安全。
+*   **缓存机制**：如果视频内容没有变化，系统会自动读取 `data/global_cache/` 中的分析结果，跳过昂贵的 AI 分析步骤。

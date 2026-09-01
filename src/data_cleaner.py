@@ -5,7 +5,7 @@ import requests
 from dotenv import load_dotenv
 from tqdm.asyncio import tqdm
 
-from prompts import get_summarize_visual_prompt
+from src.prompts import get_summarize_visual_prompt
 
 # 加载环境变量
 load_dotenv()

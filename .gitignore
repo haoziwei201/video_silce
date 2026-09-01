@@ -63,9 +63,16 @@ data/output_videos/*
 data/keyframes/*
 data/vertical_videos/*
 data/ragscripts/*
+data/slice_cache/*
+data/video_pool/*
+data/global_cache/*
 
 # 向量数据库 (本地存储，不应上传)
 data/chroma_db/
+data/libraries/**/chroma_db/
+
+# 知识库动态配置文件 (lib_config.json, video_index.json 等)
+data/libraries/*/*.json
 
 # API 缓存文件 (避免泄露或冲突)
 data/api_cache.json

@@ -9,7 +9,7 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import DASHSCOPE_API_KEY, TRANSCRIPTS_DIR
+from config import DASHSCOPE_API_KEY, TRANSCRIPTS_DIR, GLOBAL_CACHE_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +27,29 @@ class SpeechToText:
         
         dashscope.api_key = self.api_key
 
-    def transcribe(self, audio_path):
+    def transcribe(self, audio_path, video_md5=None):
         """
         将音频文件转录为带时间戳的文本
         参数Args:
             audio_path: 音频文件路径
+            video_md5: 视频MD5哈希，用于缓存查找
         返回Returns:
             列表list: 带时间戳的单词/句子列表
                 每个元素为字典格式: {"word": str, "start": float, "end": float}
         """
+        # 1. 检查全局缓存
+        if video_md5:
+            cache_dir = os.path.join(GLOBAL_CACHE_DIR, video_md5)
+            cache_file = os.path.join(cache_dir, "raw_trans.json")
+            if os.path.exists(cache_file):
+                logger.info(f"命中全局缓存: {cache_file}")
+                print(f"✓ 命中全局语音缓存")
+                try:
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        return json.load(f)
+                except Exception as e:
+                    logger.warning(f"读取缓存失败: {e}")
+
         if not self.api_key:
             print("Error: Missing DASHSCOPE_API_KEY. Cannot transcribe.")
             # 尝试回退到伪造数据（仅用于测试/演示）
@@ -130,7 +144,21 @@ class SpeechToText:
                     logger.error(f"识别流错误: {response.code} - {response.message}")
             
             logger.info(f"识别完成，共获取 {len(results)} 条句子")
-            return self._normalize(results)
+            normalized_results = self._normalize(results)
+            
+            # 保存到全局缓存
+            if video_md5:
+                try:
+                    cache_dir = os.path.join(GLOBAL_CACHE_DIR, video_md5)
+                    os.makedirs(cache_dir, exist_ok=True)
+                    cache_file = os.path.join(cache_dir, "raw_trans.json")
+                    with open(cache_file, 'w', encoding='utf-8') as f:
+                        json.dump(normalized_results, f, ensure_ascii=False)
+                    logger.info(f"已写入全局缓存: {cache_file}")
+                except Exception as e:
+                    logger.error(f"写入全局缓存失败: {e}")
+
+            return normalized_results
 
         except Exception as e:
             logger.error(f"调用 Paraformer API 失败: {e}")

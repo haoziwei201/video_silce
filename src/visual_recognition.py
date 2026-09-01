@@ -142,12 +142,31 @@ class VisualRecognition:
             
             # 【核心修改】：使用 asyncio.to_thread 将同步的 SDK 调用放入线程池
             # 这样主线程就不会被卡住了
-            response = await asyncio.to_thread(
-                MultiModalConversation.call,
-                model=self.model,
-                messages=messages
-            )
+            # 增加重试机制
+            max_retries = 3
+            retry_delay = 2
             
+            for attempt in range(max_retries):
+                try:
+                    response = await asyncio.to_thread(
+                        MultiModalConversation.call,
+                        model=self.model,
+                        messages=messages
+                    )
+                    
+                    if response.status_code == HTTPStatus.OK:
+                        break # 成功则跳出重试循环
+                    else:
+                        logger.warning(f"API Error (Attempt {attempt+1}/{max_retries}): {response.code} - {response.message}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(retry_delay * (attempt + 1))
+                except Exception as net_err:
+                     logger.warning(f"Network Error (Attempt {attempt+1}/{max_retries}): {net_err}")
+                     if attempt < max_retries - 1:
+                         await asyncio.sleep(retry_delay * (attempt + 1))
+                     else:
+                         raise net_err # 最后一次重试失败，抛出异常
+
             result_text = None
             
             if response.status_code == HTTPStatus.OK:
