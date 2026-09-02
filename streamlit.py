@@ -6,13 +6,8 @@ streamlit_app.py - 视频智能剪辑工具Web界面
 
 import streamlit as st
 import os
-import sys
 import json
-import time
 import urllib.parse
-from pathlib import Path
-from datetime import datetime
-from typing import Dict, List, Any, Optional
 
 # 导入server模块
 import server
@@ -33,63 +28,8 @@ st.markdown("""
         padding: 20px 10px;
     }
     
-    .lib-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 15px;
-        border-radius: 10px;
-        margin: 10px 0;
-        cursor: pointer;
-        transition: all 0.3s;
-    }
-    .lib-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-    }
-    .lib-card.selected {
-        border: 3px solid #ffd700;
-    }
-    .lib-name {
-        font-size: 18px;
-        font-weight: bold;
-    }
-    .lib-stats {
-        font-size: 12px;
-        opacity: 0.9;
-    }
-    
-    .asset-card {
-        background: white;
-        border: 1px solid #e0e7ff;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 10px 0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-    .asset-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-    .asset-md5 {
-        font-family: monospace;
-        background: #f3f4f6;
-        padding: 3px 8px;
-        border-radius: 5px;
-        font-size: 12px;
-    }
-    .asset-badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 11px;
-        font-weight: bold;
-        margin-right: 5px;
-    }
     .badge-success { background: #d4edda; color: #155724; }
     .badge-warning { background: #fff3cd; color: #856404; }
-    .badge-info { background: #d1ecf1; color: #0c5460; }
     
     .content-card {
         background: white;
@@ -191,22 +131,6 @@ st.markdown("""
         color: white;
     }
     
-    .file-item {
-        padding: 10px;
-        margin: 5px 0;
-        background: #f0f2f6;
-        border-radius: 8px;
-        border-left: 3px solid #667eea;
-    }
-    .file-name {
-        font-weight: bold;
-        color: #1e1e2f;
-    }
-    .file-info {
-        font-size: 12px;
-        color: #666;
-    }
-    
     .upload-area {
         border: 2px dashed #667eea;
         border-radius: 10px;
@@ -234,20 +158,6 @@ st.markdown("""
         font-size: 12px;
         margin-top: 5px;
     }
-    
-    .video-info {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 15px;
-        border-radius: 10px;
-        margin: 10px 0;
-    }
-    .video-info.exists {
-        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-    }
-    .video-info.missing {
-        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -257,10 +167,6 @@ def init_session_state():
         st.session_state.current_module = "视频资源"
     if 'current_page' not in st.session_state:
         st.session_state.current_page = "资产中心"
-    if 'processing' not in st.session_state:
-        st.session_state.processing = False
-    if 'last_result' not in st.session_state:
-        st.session_state.last_result = None
     if 'video_files' not in st.session_state:
         st.session_state.video_files = []
     if 'transcript_files' not in st.session_state:
@@ -277,8 +183,6 @@ def init_session_state():
         st.session_state.global_assets = []
     if 'lib_info' not in st.session_state:
         st.session_state.lib_info = {}
-    if 'show_lib_manager' not in st.session_state:
-        st.session_state.show_lib_manager = False
 
 def safe_display_filename(filename: str) -> str:
     """安全显示文件名（解码URL编码）"""
@@ -302,40 +206,7 @@ def refresh_data():
 
 # 顶栏导航
 def render_top_nav():
-    # 注入全局 CSS 优化按钮和容器，实现 Segmented Control 效果
-    st.markdown("""
-    <style>
-    /* 隐藏默认按钮边框和阴影 */
-    .stButton > button {
-        border: none !important;
-        box-shadow: none !important;
-        transition: all 0.2s ease !important;
-    }
-    
-    /* 调整按钮高度和文字 */
-    div[data-testid="column"] button {
-        height: 42px !important;
-        border-radius: 10px !important;
-        font-weight: 600 !important;
-    }
-    
-    /* 居中容器 */
-    .nav-container-outer {
-        display: flex;
-        justify-content: center;
-        margin: 10px 0 30px 0;
-        padding: 5px;
-        background: #f1f5f9;
-        border-radius: 14px;
-        width: fit-content;
-        margin-left: auto;
-        margin-right: auto;
-        box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # 使用列来限制宽度并居中
+    # 使用列来限制宽度并居中（按钮样式统一由页面顶部全局 CSS 控制）
     _, col_nav, _ = st.columns([1, 1, 1])
     
     with col_nav:
@@ -398,7 +269,7 @@ def render_sidebar():
             if st.session_state.selected_lib:
                 lib_info = st.session_state.lib_info
                 st.markdown(f"""
-                ### 📊 当前库: {st.session_state.selected_lib}
+                ### 📊 当前库: {server.get_lib_display_name(st.session_state.selected_lib)}
                 - 资产数: {lib_info.get('asset_count', 0)}
                 - RAG条数: {lib_info.get('rag_count', 0)}
                 """)
@@ -457,9 +328,9 @@ def page_library_overview():
                     c1, c2, c3 = st.columns([6, 2, 1])
                     with c1:
                         if is_selected:
-                            st.markdown(f"**🔵 {lib}** (当前已选)")
+                            st.markdown(f"**🔵 {server.get_lib_display_name(lib)}** (当前已选)")
                         else:
-                            st.markdown(f"📁 {lib}")
+                            st.markdown(f"📁 {server.get_lib_display_name(lib)}")
                     with c2:
                         st.markdown(f"📊 资产: {lib_info.get('asset_count', 0)} | RAG: {lib_info.get('rag_count', 0)}")
                     with c3:
@@ -494,6 +365,7 @@ def page_library_overview():
                 lib_to_delete = st.selectbox(
                     "选择要删除的库",
                     [l for l in st.session_state.libraries if l != "default_lib"],
+                    format_func=server.get_lib_display_name,
                     key="overview_delete_select"
                 )
                 if st.button("确认删除", key="overview_delete_btn", use_container_width=True):
@@ -817,7 +689,7 @@ def page_data_processing():
 def page_video_import():
     st.markdown('<div class="content-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">📥 视频导入</div>', unsafe_allow_html=True)
-    st.markdown(f"当前知识库: **{st.session_state.selected_lib}**")
+    st.markdown(f"当前知识库: **{server.get_lib_display_name(st.session_state.selected_lib)}**")
     
     st.markdown("### 关联资产到知识库")
     if st.session_state.global_assets:
@@ -942,11 +814,6 @@ def page_video_import():
             
             if st.button("🏗️ 开始构建", use_container_width=True, type="primary"):
                 with st.spinner("正在构建知识库..."):
-                    progress_bar = st.progress(0)
-                    for i in range(101):
-                        progress_bar.progress(i / 100)
-                        time.sleep(0.02)
-                    
                     result = server.rag_building(
                         rag_filename=selected_rag,
                         lib_name=st.session_state.selected_lib
@@ -967,7 +834,7 @@ def page_video_import():
 def page_semantic_search():
     st.markdown('<div class="content-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">🔍 语义搜索</div>', unsafe_allow_html=True)
-    st.markdown(f"当前知识库: **{st.session_state.selected_lib}**")
+    st.markdown(f"当前知识库: **{server.get_lib_display_name(st.session_state.selected_lib)}**")
     
     query = st.text_input(
         "输入搜索内容",
@@ -1043,7 +910,7 @@ def page_semantic_search():
 def page_video_editing():
     st.markdown('<div class="content-card">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">✂️ 智能剪辑</div>', unsafe_allow_html=True)
-    st.markdown(f"当前知识库: **{st.session_state.selected_lib}**")
+    st.markdown(f"当前知识库: **{server.get_lib_display_name(st.session_state.selected_lib)}**")
     
     tabs = st.tabs(["🎬 视频剪辑", "📱 竖屏转换", "📝 添加字幕"])
     

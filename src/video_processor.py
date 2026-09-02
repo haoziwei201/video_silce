@@ -103,9 +103,6 @@ class VideoProcessor:
             print(f"剪辑片段失败: {e}")
             return False
     
-    def select_key_clips(self, analyzed_segments, max_duration=300):
-        pass
-
     def extract_keyframes(self, video_path, output_dir, interval=2.0):
         """
         [已弃用] 建议使用 extract_smart_keyframes
@@ -437,24 +434,6 @@ class VideoProcessor:
         except Exception as e:
             print(f"合并异常: {e}")
             return False
-
-    
-    def process_video(self, video_path, analyzed_segments, max_duration=300, output_filename="output_video.mp4"):
-        """
-        完整的视频处理流程 (保留此方法用于独立测试，但 main.py 不调用它)
-        """
-        # 选择关键片段
-        selected_segments = self.select_key_clips(analyzed_segments, max_duration)
-        
-        if not selected_segments:
-            print("No segments selected for processing.")
-            return None
-            
-        # 注意：这里逻辑需要调整，因为 combine_clips 现在接收文件路径列表
-        # 如果要保留 process_video，需要先调用 create_clip 生成临时文件，再 combine
-        # 简单起见，这里仅打印提示
-        print("process_video is deprecated in this version. Please use main.py workflow.")
-        return None
 
     def convert_to_vertical(self, video_path, output_path=None, method="solid", background_color=(0, 0, 0)):
         """

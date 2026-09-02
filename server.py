@@ -85,6 +85,18 @@ def decode_filename(encoded: str) -> str:
     """URL解码文件名"""
     return urllib.parse.unquote(encoded)
 
+# 默认库的显示名称映射
+# 注意：存储层必须保持 "default_lib"，因为 ChromaDB 的 collection 名不支持中文，
+# 只允许 [a-zA-Z0-9._-]，所以仅在展示层把 "default_lib" 显示为 "默认库"。
+DEFAULT_LIB_NAME = "default_lib"
+DEFAULT_LIB_DISPLAY = "默认库"
+
+def get_lib_display_name(lib_name):
+    """返回知识库的显示名称（default_lib 显示为 默认库，其余原样返回）"""
+    if lib_name == DEFAULT_LIB_NAME:
+        return DEFAULT_LIB_DISPLAY
+    return lib_name
+
 def format_size(size_bytes):
     """格式化文件大小"""
     for unit in ['B', 'KB', 'MB', 'GB']:
@@ -267,6 +279,18 @@ def delete_library(lib_name: str) -> Dict[str, Any]:
             result["message"] = f"知识库不存在: {lib_name}"
             return result
         
+        # Windows 下 ChromaDB 的 sqlite 文件会被进程内打开的连接锁定，
+        # 直接 shutil.rmtree 会报 [WinError 32] 删除失败。
+        # 这里打开一次目标库、释放系统缓存并触发 GC，解除文件锁后再删除。
+        try:
+            import gc
+            vkb = VideoKnowledgeBase(lib_name=lib_name)
+            vkb.client.clear_system_cache()
+            del vkb
+            gc.collect()
+        except Exception as e:
+            logger.warning(f"释放 ChromaDB 文件锁失败，继续尝试删除: {e}")
+        
         # 删除库目录
         lib_path = os.path.join(LIBRARIES_DIR, lib_name)
         if os.path.exists(lib_path):
@@ -370,50 +394,6 @@ def add_asset_to_library(lib_name: str, asset_md5: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"添加资产到知识库出错: {e}")
         result["message"] = f"添加资产到知识库出错: {e}"
-    
-    return result
-
-def remove_asset_from_library(lib_name: str, asset_md5: str) -> Dict[str, Any]:
-    """从知识库移除资产"""
-    result = {
-        "success": False,
-        "message": "",
-        "lib_name": lib_name,
-        "asset_md5": asset_md5
-    }
-    
-    try:
-        lib_config_path = os.path.join(LIBRARIES_DIR, lib_name, "lib_config.json")
-        if os.path.exists(lib_config_path):
-            with open(lib_config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            
-            if asset_md5 in config.get("videos", []):
-                config["videos"].remove(asset_md5)
-                
-                with open(lib_config_path, 'w', encoding='utf-8') as f:
-                    json.dump(config, f, ensure_ascii=False, indent=2)
-                
-                # 从向量库中删除
-                try:
-                    vkb = VideoKnowledgeBase(lib_name=lib_name)
-                    ids_to_delete = vkb.collection.get(where={"source_video_md5": asset_md5})['ids']
-                    if ids_to_delete:
-                        vkb.collection.delete(ids=ids_to_delete)
-                except Exception as e:
-                    logger.warning(f"从向量库删除失败: {e}")
-                
-                result["success"] = True
-                result["message"] = f"资产已从知识库移除: {asset_md5}"
-                logger.info(f"从知识库移除资产成功: {lib_name} - {asset_md5}")
-            else:
-                result["message"] = f"资产不在知识库中: {asset_md5}"
-        else:
-            result["message"] = f"知识库配置文件不存在: {lib_config_path}"
-        
-    except Exception as e:
-        logger.error(f"从知识库移除资产出错: {e}")
-        result["message"] = f"从知识库移除资产出错: {e}"
     
     return result
 
@@ -600,47 +580,6 @@ def delete_asset(asset_md5: str) -> Dict[str, Any]:
     return result
 
 # ==================== 视频处理函数 ====================
-
-async def process_video_async(video_path: str, original_filename: str, category: str = "general") -> Dict[str, Any]:
-    """异步处理视频"""
-    result = {
-        "success": False,
-        "message": "",
-        "md5": None
-    }
-    
-    try:
-        am = AssetManager()
-        md5 = await am.process_video_asset(video_path, category, original_filename)
-        
-        if md5:
-            result["success"] = True
-            result["md5"] = md5
-            result["message"] = f"视频处理成功，MD5: {md5}"
-        else:
-            result["message"] = "视频处理失败"
-            
-    except Exception as e:
-        logger.error(f"处理视频出错: {e}")
-        result["message"] = f"处理视频出错: {e}"
-    
-    return result
-
-def process_video_sync(video_path: str, original_filename: str, category: str = "general") -> Dict[str, Any]:
-    """同步处理视频（包装异步函数）"""
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(process_video_async(video_path, original_filename, category))
-        loop.close()
-        return result
-    except Exception as e:
-        logger.error(f"同步处理视频出错: {e}")
-        return {
-            "success": False,
-            "message": f"处理视频出错: {e}",
-            "md5": None
-        }
 
 def data_processing(video_filename: str, category: str = "general") -> Dict[str, Any]:
     """
@@ -1403,11 +1342,9 @@ __all__ = [
     'get_libraries',
     'get_library_info',
     'add_asset_to_library',
-    'remove_asset_from_library',
     'get_global_assets',
     'get_asset_info',
     'delete_asset',
-    'process_video_sync',
     'data_processing',
     'rag_building',
     'rag_search',
@@ -1420,6 +1357,7 @@ __all__ = [
     'safe_filename',
     'encode_filename',
     'decode_filename',
+    'get_lib_display_name',
     'format_size',
     'INPUT_VIDEO_DIR',
     'OUTPUT_VIDEO_DIR',

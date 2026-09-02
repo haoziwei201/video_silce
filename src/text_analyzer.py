@@ -1,8 +1,6 @@
 import json
 import os
 import sys
-import requests
-import re
 import asyncio
 
 # 将项目根目录添加到系统路径，以便导入 config 和 src
@@ -231,34 +229,3 @@ class TextAnalyzer:
             except Exception as e:
                 print(f"LLM call failed: {e}")
                 return []
-'''
-# 测试代码
-if __name__ == "__main__":
-    # 模拟数据加载路径
-    # 这里的路径需要根据实际运行位置调整，这里假设从项目根目录或src目录运行
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    file_path = os.path.join(base_dir, "data", "transcripts", "text_trans.json")
-    
-    def load_trans_data():
-        if not os.path.exists(file_path):
-            print(f"文件不存在: {file_path}")
-            return []
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return data
-
-    transcript = load_trans_data()
-    if transcript:
-        print(f"成功加载 {len(transcript)} 条字幕数据")
-        
-        analyzer = TextAnalyzer()
-        # 假定用户输入
-        user_instruction = "去除无意义的语气词和意外插曲，只保留核心介绍内容。"
-        
-        results = analyzer.analyze_transcript(transcript, user_instruction)
-        
-        print("\n--- 分析结果 ---")
-        print(json.dumps(results, indent=2, ensure_ascii=False))
-    else:
-        print("未找到测试数据，请检查 data/transcripts/text_trans.json")
-'''
