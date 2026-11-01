@@ -17,7 +17,9 @@ LLM_MODEL = "deepseek-chat"
 
 # API配置 - DashScope (Paraformer & Qwen-VL)
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
-QWEN_VL_MODEL = "qwen-vl-plus"
+# 2026-11 实测：qwen-vl-plus / qwen-vl-max 在当前账号返回 "Model not exist"，qwen3-vl-plus 可用。
+# 如需换模型，在 .env 里设置 QWEN_VL_MODEL 即可，不要改这里。
+QWEN_VL_MODEL = os.getenv("QWEN_VL_MODEL", "qwen3-vl-plus")
 
 # 路径配置
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

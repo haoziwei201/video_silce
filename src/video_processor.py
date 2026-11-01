@@ -181,15 +181,15 @@ class VideoProcessor:
             pbar = tqdm(total=int(total_frames), desc="  - 扫描进度", unit="frames")
             
             while True:
-                # 抓取帧但不解码（快速）
+                # 每帧都先 grab（只抓取不解码，快速）；需要处理的帧再 retrieve 解码。
+                # 注意：retrieve 之前必须有 grab，否则首帧会报 "Picture does not contain data" 并直接退出扫描。
+                if not cap.grab():
+                    break
                 if curr_frame_idx % frame_interval != 0:
-                    ret = cap.grab()
-                    if not ret:
-                        break
                     curr_frame_idx += 1
                     pbar.update(1)
                     continue
-                
+
                 # 需要处理的帧：解码
                 ret, frame = cap.retrieve()
                 if not ret:
@@ -213,11 +213,11 @@ class VideoProcessor:
                     curr_frame_idx += 1
                     continue
 
-                # A. PPT/文字检测
+                # A. PPT/文字检测（软件界面录屏几乎每帧都命中，按 2 秒间隔限频，避免关键帧爆炸）
                 if self._detect_bright_rectangle(frame):
-                    # 注意：这里直接保存当前frame，避免再次调用 _add_keyframe 里的 cap.set
-                    self._save_frame_direct(frame, curr_time, output_dir, keyframes, extracted_times, prefix="ppt_")
-                    last_motion_time = curr_time 
+                    if curr_time - last_motion_time > 2.0:
+                        self._save_frame_direct(frame, curr_time, output_dir, keyframes, extracted_times, prefix="ppt_")
+                        last_motion_time = curr_time
                 
                 # B. 运动检测
                 elif prev_frame_gray is not None:
@@ -268,6 +268,21 @@ class VideoProcessor:
             traceback.print_exc()
             return []
 
+    @staticmethod
+    def _write_frame(frame_path, frame):
+        """
+        保存帧图片。cv2.imwrite 在 Windows 上遇到含非 ASCII 字符的绝对路径会静默失败，
+        统一改用 imencode + tofile，并返回是否成功。
+        """
+        try:
+            ok, buf = cv2.imencode(".jpg", frame)
+            if not ok:
+                return False
+            buf.tofile(frame_path)
+            return True
+        except Exception:
+            return False
+
     def _save_frame_direct(self, frame, time_sec, output_dir, keyframes_list, extracted_times_set, prefix="frame_"):
         """直接保存当前帧数据，避免重新读取"""
         # 简单去重
@@ -278,7 +293,9 @@ class VideoProcessor:
         frame_name = f"{prefix}{int(time_sec*1000):06d}.jpg"
         frame_path = os.path.join(output_dir, frame_name)
         try:
-            cv2.imwrite(frame_path, frame)
+            if not self._write_frame(frame_path, frame):
+                print(f"关键帧写盘失败: {frame_path}")
+                return
             extracted_times_set.add(time_sec)
             keyframes_list.append({
                 "time": time_sec,
@@ -299,9 +316,9 @@ class VideoProcessor:
         if ret:
             frame_name = f"{prefix}{int(time_sec*1000):06d}.jpg"
             frame_path = os.path.join(output_dir, frame_name)
-            cv2.imwrite(frame_path, frame)
-            keyframes_list.append({"time": time_sec, "path": frame_path})
-            extracted_times_set.add(time_sec)
+            if self._write_frame(frame_path, frame):
+                keyframes_list.append({"time": time_sec, "path": frame_path})
+                extracted_times_set.add(time_sec)
 
     def _detect_scenes_opencv(self, video_path, threshold=0.7):
         """场景检测：基于HSV直方图"""

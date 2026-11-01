@@ -88,3 +88,6 @@ data/analysis_results/*.json
 
 # 保留预设的测试字幕数据
 !data/transcripts/text_trans.json
+
+# 本地删除知识库前的日志/登记备份（不应上传）
+data/_backup*/

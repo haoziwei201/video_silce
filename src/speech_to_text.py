@@ -26,6 +26,8 @@ class SpeechToText:
             print("警告: 未找到 DASHSCOPE_API_KEY，语音识别将无法正常工作")
         
         dashscope.api_key = self.api_key
+        # 最近一次 transcribe 的结果状态：cache / ok / no_speech / failed
+        self.last_status = None
 
     def transcribe(self, audio_path, video_md5=None):
         """
@@ -36,7 +38,10 @@ class SpeechToText:
         返回Returns:
             列表list: 带时间戳的单词/句子列表
                 每个元素为字典格式: {"word": str, "start": float, "end": float}
+            识别失败时返回空列表并把 self.last_status 置为 "failed"，
+            调用方必须据此区分“合法无语音”和“识别失败”。
         """
+        self.last_status = None
         # 1. 检查全局缓存
         if video_md5:
             cache_dir = os.path.join(GLOBAL_CACHE_DIR, video_md5)
@@ -46,17 +51,20 @@ class SpeechToText:
                 print(f"✓ 命中全局语音缓存")
                 try:
                     with open(cache_file, 'r', encoding='utf-8') as f:
+                        self.last_status = "cache"
                         return json.load(f)
                 except Exception as e:
                     logger.warning(f"读取缓存失败: {e}")
 
         if not self.api_key:
+            logger.error("缺少 DASHSCOPE_API_KEY，无法转录")
             print("Error: Missing DASHSCOPE_API_KEY. Cannot transcribe.")
-            # 尝试回退到伪造数据（仅用于测试/演示）
-            return self._fallback_fake_transcribe(audio_path)
+            self.last_status = "failed"
+            return self._fallback_fake_transcribe(audio_path, video_md5)
 
         if not os.path.exists(audio_path):
             logger.error(f"音频文件不存在: {audio_path}")
+            self.last_status = "failed"
             return []
 
         logger.info(f"开始使用 Paraformer 识别音频: {audio_path}")
@@ -76,6 +84,7 @@ class SpeechToText:
             responses = recognition.call(audio_path)
             logger.info(f"成功获取responses")
             results = []
+            stream_error = False
             
             # Recognition.call 返回的是一个生成器(generator)或者Response
             # 为了兼容性和处理流式响应，我们进行遍历
@@ -142,9 +151,17 @@ class SpeechToText:
 
                 else:
                     logger.error(f"识别流错误: {response.code} - {response.message}")
+                    stream_error = True
             
             logger.info(f"识别完成，共获取 {len(results)} 条句子")
             normalized_results = self._normalize(results)
+
+            if stream_error and not normalized_results:
+                # 接口报错且没拿到任何句子：按失败处理，不写缓存，避免把空结果当成“无语音”固化
+                self.last_status = "failed"
+                return self._fallback_fake_transcribe(audio_path, video_md5)
+
+            self.last_status = "ok" if normalized_results else "no_speech"
             
             # 保存到全局缓存
             if video_md5:
@@ -163,26 +180,30 @@ class SpeechToText:
         except Exception as e:
             logger.error(f"调用 Paraformer API 失败: {e}")
             print(f"调用 Paraformer API 失败: {e}")
-            return self._fallback_fake_transcribe(audio_path)
+            self.last_status = "failed"
+            return self._fallback_fake_transcribe(audio_path, video_md5)
 
-    def _fallback_fake_transcribe(self, audio_path):
-        """回退到原有的伪造逻辑（仅当API不可用时）"""
-        logger.warning("使用伪造的转录数据作为回退")
-        base = os.path.splitext(os.path.basename(audio_path))[0]
-        candidates = [
-            os.path.join(TRANSCRIPTS_DIR, f"{base}.json"),
-            os.path.join(TRANSCRIPTS_DIR, "text_trans.json"),
-        ]
-        data = []
-        for path in candidates:
-            if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    try:
+    def _fallback_fake_transcribe(self, audio_path, video_md5=None):
+        """
+        识别失败时的回退：只允许使用与当前视频 MD5 绑定的缓存，
+        不再读取 transcripts 目录下与视频无关的通用文件，避免把别的视频的转录混进知识库。
+        找不到可信缓存就返回空列表，由调用方根据 last_status 决定如何处理。
+        """
+        if video_md5:
+            cache_file = os.path.join(GLOBAL_CACHE_DIR, video_md5, "raw_trans.json")
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                    except Exception:
-                        data = []
-                break
-        return self._normalize(data)
+                    logger.warning(f"识别失败，回退到同 MD5 缓存: {cache_file}")
+                    return self._normalize(data)
+                except Exception as e:
+                    logger.warning(f"读取同 MD5 缓存失败: {e}")
+        logger.error(
+            "语音识别失败且无同 MD5 缓存可用（%s），返回空转录；不会加载通用回退文件",
+            os.path.basename(audio_path),
+        )
+        return []
 
     def split_by_punctuation(self, items):
         """

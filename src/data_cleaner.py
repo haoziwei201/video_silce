@@ -93,7 +93,10 @@ class AsyncDataCleaner:
                 "type": item['type'],
                 "content": item['content'],
                 "category": category_tag,
-                "visual_summary": summary
+                "visual_summary": summary,
+                # 原始画面描述与关键帧不丢：承诺卡展示依据时要能回到原图原文
+                "visual_raw": item.get("visual_raw", "") or item.get("visual_context", ""),
+                "frames": item.get("frames", []),
             }
 
             # 构造 RAG 文本
